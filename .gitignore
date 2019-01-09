@@ -1,0 +1,6 @@
+# macOS Specific
+.DS_Store
+
+# vkernel toolchain/builds specific
+*.o
+build/

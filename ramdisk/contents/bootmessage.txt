@@ -1,0 +1,21 @@
+
+
+           db    db db   dD d88888b d8888b. d8b   db d88888b db      
+           88    88 88 ,8P' 88'     88  `8D 888o  88 88'     88      
+           Y8    8P 88,8P   88ooooo 88oobY' 88V8o 88 88ooooo 88      
+           `8b  d8' 88`8b   88~~~~~ 88`8b   88 V8o88 88~~~~~ 88      
+            `8bd8'  88 `88. 88.     88 `88. 88  V888 88.     88booo. 
+              YP    YP   YD Y88888P 88   YD VP   V8P Y88888P Y88888P 
+
+
+Welcome to vkernel.
+Copyright (c) 2018-2019 Tom Hancocks.
+
+IMPORTANT NOTE: 
+You are currently running vkernel outside of a full Operating System 
+environment. This means that it has most likely been booted directly by QEMU
+inside the vkernel repository using the 'make run-q' command. You will only
+have access to the basic Kernel Shell because of this.
+
+For more information please visit the vkernel repository at 
+https://gitlab.com/Veracyon/vkernel.
