@@ -88,17 +88,6 @@ void init_i386_cpu(struct i386_cpu *cpu)
 	
 	/* Setup Virtual Memory */
 	init_virtual_memory();
-
-	/* Setup the kernel heap. We want to allocate a quarter of total physical 
-	   memory upto 256MiB to the kernel heap. */
-	uint32_t total_kib = phys_total_kib();
-	uint32_t heap_kib = (total_kib >> 2);
-	heap_kib = (heap_kib >= 262144) ? 262144 : heap_kib;
-	klog("System has %dKiB total memory\n", total_kib);
-	klog("  kernel heap should use %dKiB \n", heap_kib);
-	
-	/* TODO: Get this to the kernel context. The context should not be 
-	   established here however. */
 }
 
 #endif
