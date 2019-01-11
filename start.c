@@ -24,7 +24,7 @@
 #include <arch.h>
 #include <serial.h>
 #include <print.h>
-#include <frame.h>
+#include <pmm.h>
 #include <multiboot.h>
 #include <heap.h>
 #include <display.h>
@@ -47,7 +47,7 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	}
 
 	/* Initialise the hardware components of the system */
-	init_phys(mb);
+	init_physical_memory(mb);
 	init_arch();
 	init_display();
 

@@ -24,6 +24,8 @@
 #include <arch.h>
 #include <heap.h>
 #include <print.h>
+#include <vmm.h>
+#include <paging.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,7 +39,7 @@ static struct context *__current_context = NULL;
    assertion to produce a compile time error if this is not the case. */
 struct context_header_page{
 	struct context ctx;
-	struct heap ctx_heap;
+	struct heap *ctx_heap;
 };
 
 _Static_assert(
@@ -47,17 +49,8 @@ _Static_assert(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline void *__ctx_acquire_page(
-	void *paging_ctx, uintptr_t base, uintptr_t limit
-) {
-	uintptr_t addr = find_linear_address(paging_ctx, base, limit, 1);
-
-	if (addr == INVALID_LINEAR_ADDRESS_ERROR) {
-		klogc(swarn, "*** Failed to acquire page for context.\n");
-		return NULL;
-	}
-	
-	return zero_page(paging_ctx, alloc_page(paging_ctx, (void *)addr, NULL));
+static inline void *__ctx_acquire_page(void) {
+	return (void *)vmm_acquire_any_page();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,17 +68,18 @@ oserr init_context(struct context **ctx)
 	   for now as we'll need to clone it and work from there. */
 	struct paging_context *paging_ctx = NULL;
 	uintptr_t heap_base = 0x10000000;
-	uintptr_t heap_limit = 0xFFFFFFFF;
+	uintptr_t heap_limit = 0xC0000000;
 	if (*ctx == kernel_context) {
 		/* We're setting up the kernel context. For this we do not need to
 		   clone its paging context. We also need to correct the heap base
 		   so that it operates within "kernel" memory. */
-		paging_ctx = &kernel_pd;
-		heap_base = 0x00400000;
-		heap_limit = 0x0FFFFFFF;
-		klog("Using existing Kernel Page Context\n");
+		paging_ctx = kernel_paging_ctx;
+		heap_base = 0x00400000; /* 4MiB */
+		heap_limit = 0x10000000; /* 256MiB */
+		klog("Using existing Kernel Page Context: %p\n", kernel_paging_ctx);
 	}
 	else {
+		/*
 		if (clone_kernel_paging_context(&paging_ctx) != e_ok) {
 			klogc(
 				swarn, "*** Failed to clone the kernel paging context. "
@@ -93,26 +87,23 @@ oserr init_context(struct context **ctx)
 			);
 			return e_fail;
 		}
-		klog("Cloned kernel page context\n");
+		klog("Cloned kernel page context. Switching to it.\n");
+		load_cr3(paging_ctx);
+		*/
 	}
 
 	/* The first job is to construct a header frame for the context. We need 
 	   to acquire this page directly as we potentially do not have a heap at
 	   this point. Ensure that this allocation is within the kernel! */
-	struct context_header_page *header = __ctx_acquire_page(
-		paging_ctx, 0x00400000, 0x0FFFFFFF
-	);
+	struct context_header_page *header = __ctx_acquire_page();
 
 	/* Ensure the context is correctly mapped and configured. */
 	*ctx = header;
 	(*ctx)->paging_context = paging_ctx;
-	(*ctx)->heap = &header->ctx_heap;
 
 	/* Initialise the heap for the context */
-	/* TODO: This is currently all preallocated and thus not overly large 
-	   (16MiB). The heap should cover all of the available linear address space
-	   and allocate and free pages as required. */
-	init_heap(&header->ctx_heap, paging_ctx, 16385);
+	init_heap(&header->ctx_heap, heap_base, heap_limit);
+	(*ctx)->heap = header->ctx_heap;
 
 	/* Setup a stack for the context. If this is the Kernel context then we
 	   simply need to adopt the current stack. A stack by default should be
@@ -122,7 +113,14 @@ oserr init_context(struct context **ctx)
 		(*ctx)->stack = &kernel_stack;
 	}
 	else {
+		uint32_t sp = 0;
+
 		(*ctx)->stack = heap_alloc((*ctx)->heap, (*ctx)->stack_size);
+		if (init_stack((*ctx)->stack, NULL, &sp) != e_ok) {
+			kprintc(serr, "Failed to setup stack for context.\n");
+			return e_fail;
+		}
+		(*ctx)->stack_ptr = (void *)sp;
 	}
 
 	/* The context should now be established and ready for use. The last thing

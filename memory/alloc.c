@@ -32,6 +32,7 @@ void *kalloc(uint32_t size)
 		klogc(swarn, "*** Attempted to use kalloc() with no active context\n");
 		return NULL;
 	}
+	klogc(sinfo, "Allocating %u bytes of memory on heap %p.\n", size, ctx->heap);
 	return heap_alloc(ctx->heap, size);
 }
 

@@ -23,6 +23,7 @@
 #include <tar.h>
 #include <types.h>
 #include <alloc.h>
+#include <print.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -48,7 +49,6 @@ static inline const char *__tar_filename(const char *restrict tar_path) {
 		}
 		*n++ = *c++;
 	}
-
 
 	*n = '\0';
 	return name;
@@ -86,7 +86,10 @@ void parse_tar(
 	/* Allocate the appropriate memory and then construct a list of files to 
 	   pass back to the caller. */
 	if (files) {
-		*files = kalloc(sizeof(**files) * count);
+		if ((*files = kalloc(sizeof(**files) * count)) == NULL) {
+			klogc(serr, "Tarball files allocation failed!\n");
+			return;
+		}
 		
 		struct tar_header *ptr = tar;
 		for (int i = 0; i < count; ++i) {

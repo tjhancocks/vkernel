@@ -80,6 +80,7 @@ extern void _irq0x2f(void);
 struct i386_gate master_idt[IDT_SIZE] __attribute__((aligned(PAGE_SIZE)));
 struct i386_descriptor_pointer master_idt_ptr;
 static irq_handler_t _irq_handlers[IRQ_COUNT] = { NULL };
+static int_handler_t _int_handlers[IDT_SIZE] = { NULL };
 
 static inline void lidt(struct i386_descriptor_pointer *ptr)
 {
@@ -164,11 +165,16 @@ void interrupt_handler(struct i386_interrupt_frame *frame)
 {
 	if (frame->interrupt < 0x20) {
 		/* Interrupt Service Routine received. */
-		panic(
-			"Unhandled Exception",
-			"Exception %02X was received, but no handler for it was found.",
-			frame->interrupt
-		);
+		if (_int_handlers[frame->interrupt]) {
+			_int_handlers[frame->interrupt](frame);
+		}
+		else {
+			panic(
+				"Unhandled Exception",
+				"Exception %02X was received, but no handler for it was found.",
+				frame->interrupt
+			);
+		}
 	}
 	else if (frame->interrupt < 0x30) {
 		/* Check for the appropriate IRQ handler */
@@ -186,6 +192,9 @@ void interrupt_handler(struct i386_interrupt_frame *frame)
 	}
 	else {
 		/* User defined interrupt received. */
+		if (_int_handlers[frame->interrupt]) {
+			_int_handlers[frame->interrupt](frame);
+		}
 	}
 }
 
@@ -194,6 +203,11 @@ void set_irq_handler(uint8_t irq, irq_handler_t fn)
 	irq -= 0x20;
 	if (irq >= 0x0 && irq <= 0xF)
 		_irq_handlers[irq] = fn;
+}
+
+void set_int_handler(uint8_t num, int_handler_t fn)
+{
+	_int_handlers[num] = fn;
 }
 
 #endif

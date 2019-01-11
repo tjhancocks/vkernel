@@ -41,6 +41,9 @@ struct context
 
 	/* The size of the stack in bytes. */
 	uint32_t stack_size;
+
+	/* The stack pointer, indicating where on the stack we are */
+	void *stack_ptr;
 };
 
 extern struct context *kernel_context;

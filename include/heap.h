@@ -24,47 +24,54 @@
 #define HEAP_H
 
 #include <types.h>
-#include <arch.h>
 
-enum heap_flags
+struct heap;
+struct heap_block;
+
+/**
+ Possible states that a heap block can be in.
+ */
+enum heap_state
 {
-	heap_block_unused = 0,
-	heap_block_present = 1 << 0,
-	heap_block_allocated = 1 << 31,
+	heap_block_free = 0xF1EEF1EE,
+	heap_block_used = 0xA110CA1E,
 };
 
+/**
+ Block header structure. Contains information about a block of memory on the 
+ heap.
+ */
 struct heap_block
 {
-	uint32_t flags;
-	uintptr_t offset;
+	uint32_t state;
 	uint32_t size;
+	struct heap *owner;
+	struct heap_block *next;
+	struct heap_block *back;
 } __attribute__((packed));
 
-struct heap_container
+/**
+ Heap structure. Contains information about the entire heap.
+ */
+struct heap 
 {
-	struct heap_container *next_link;
-	struct heap_container *prev_link;
-	struct heap_block *blocks;
-} __attribute__((packed));
-
-struct heap
-{
-	uintptr_t page_ctx;
 	uintptr_t base;
 	uintptr_t limit;
-	uint32_t pages;
-	uint32_t container_blocks;
-	struct heap_container *first_container;
-	struct heap_container *last_container;
-} __attribute__((packed));
+	uint32_t block_count;
+	uint32_t free_blocks;
+	struct heap_block *first;
+	struct heap_block *last;
+};
 
-extern struct heap kernel_heap;
+/**
+ Initialise a heap with the specified virtual address range.
+ */
+oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit);
 
-void init_heap(
-	struct heap *heap, struct paging_context *ctx, uint32_t size_kib
-);
-void describe_heap(struct heap *heap);
+/**
+ Make an allocation on the heap. Allocates a new block on the heap of the 
+ specified size.
+ */
 void *heap_alloc(struct heap *heap, uint32_t size);
-void heap_free(struct heap *heap, void *ptr);
 
 #endif

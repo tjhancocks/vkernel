@@ -20,49 +20,36 @@
   SOFTWARE.
  */
 
-#include <ramdisk.h>
+#if !defined(VIRTUAL_MEMORY_MANAGER_H)
+#define VIRTUAL_MEMORY_MANAGER_H
+
 #include <types.h>
-#include <heap.h>
-#include <tar.h>
-#include <string.h>
-#include <print.h>
 
-struct ramdisk system_ramdisk = { 0 };
+/**
+ Initialise the virtual memory manager.
+ */
+oserr init_virtual_memory(void);
 
-void init_ramdisk(struct ramdisk *rd, uintptr_t start, uintptr_t end)
-{
-	if (rd == NULL)
-		return;
+/**
+ Is the specified address valid? If the address is valid then we can infer the
+ address is mapped into the paging structures of the system.
+ */
+bool vmm_address_valid(uintptr_t address);
 
-	/* Set the basic information about the ramdisk. */
-	rd->start = start;
-	rd->end = end;
+/**
+ Acquire a new page from the virtual memory manager
+ */
+uintptr_t vmm_acquire_any_page(void);
 
-	parse_tar(
-		(void *)rd->start, 
-		rd->end - rd->start, &rd->file_count, (void **)&rd->files
-	);
-}
+/**
+ Acquire a specific page from the virtual memory manager.
+ */
+oserr vmm_acquire_page(uintptr_t linear);
 
-int chk_ramdisk(struct ramdisk *rd)
-{
-	return (rd && rd->start < rd->end);
-}
+/**
+ Release the specified page, returning the frame back to the phyiscal memory
+ manager, and marking the page as not present.
+ */
+void vmm_release_page(uintptr_t linear);
 
-const void *ramdisk_open(struct ramdisk *rd, const char *name, uint32_t *size)
-{
-	if (rd == NULL || rd->files == NULL)
-		return NULL;
-
-	for (int i = 0; i < rd->file_count; ++i) {
-		if (strcmp(name, rd->files[i].name) == 0) {
-			/* Found the file. */
-			if (size) {
-				*size = rd->files[i].size;
-			}
-			return (void *)rd->files[i].offset;
-		}
-	}
-
-	return NULL;
-}
+#endif

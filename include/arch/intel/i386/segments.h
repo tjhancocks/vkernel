@@ -96,9 +96,11 @@ extern struct i386_tss master_tss;
 extern struct i386_gate master_idt[IDT_SIZE];
 
 typedef void(*irq_handler_t)(uint8_t irq);
+typedef void(*int_handler_t)(struct i386_interrupt_frame *frame);
 
 void i386_map_gate(uint8_t num, void(*f)(void), uint16_t sel, uint8_t acc);
 void set_irq_handler(uint8_t irq, irq_handler_t fn);
+void set_int_handler(uint8_t num, int_handler_t fn);
 
 void init_gdt(void);
 void init_idt(void);

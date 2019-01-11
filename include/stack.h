@@ -20,33 +20,15 @@
   SOFTWARE.
  */
 
-#if !defined(FRAME_H)
-#define FRAME_H
+#if !defined(STACK_H)
+#define STACK_H
 
-#include <arch.h>
 #include <types.h>
-#include <multiboot.h>
 
-uint32_t phys_total_kib(void);
-uintptr_t phys_kernel_start(void);
-uintptr_t phys_kernel_end(void);
-uint32_t phys_kernel_frames(void);
-uintptr_t phys_modules_start(void);
-uintptr_t phys_modules_end(void);
-uint32_t phys_modules_frames(void);
-uintptr_t phys_frame_stack(void);
-uintptr_t phys_frame_stack_ptr(void);
-uintptr_t phys_frame_stack_end(void);
-uint32_t phys_frame_stack_max(void);
-uint32_t phys_frame_stack_free(void);
-
-void *phys_zero_frame(uintptr_t frame);
-void *phys_copy_frame(uintptr_t dst, uintptr_t src);
-
-uint32_t phys_frame_count(void);
-uintptr_t phys_alloc_frame(void);
-
-void phys_parse_mmap(struct multiboot_info *mb);
-void init_phys(struct multiboot_info *mb);
+/**
+ Initialise the specified stack, populating it with the required values and its
+ current stack pointer.
+ */
+oserr init_stack(void *restrict stack, void(*start)(void), uint32_t *sp);
 
 #endif

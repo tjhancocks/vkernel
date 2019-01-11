@@ -25,8 +25,7 @@
 #include <arch.h>
 #include <arch/intel/intel.h>
 #include <print.h>
-#include <debug.h>
-#include <heap.h>
+#include <vmm.h>
 
 struct i386_cpu master_cpu = { 0 };
 
@@ -86,7 +85,9 @@ void init_i386_cpu(struct i386_cpu *cpu)
 	init_gdt();
 	init_pic();
 	init_idt();
-	init_paging();
+	
+	/* Setup Virtual Memory */
+	init_virtual_memory();
 
 	/* Setup the kernel heap. We want to allocate a quarter of total physical 
 	   memory upto 256MiB to the kernel heap. */

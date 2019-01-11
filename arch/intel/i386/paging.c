@@ -22,348 +22,461 @@
 
 #if __i386__
 
-#include <types.h>
-#include <arch/intel/intel.h>
+#include <paging.h>
 #include <arch.h>
+#include <pmm.h>
 #include <print.h>
-#include <frame.h>
+#include <string.h>
 #include <debug.h>
-#include <panic.h>
-
-struct paging_context kernel_pd = {0};
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline void page_indexes(
-	uintptr_t addr, 
-	uint32_t *p, 
-	uint32_t *pd, 
-	uint32_t *pt
-) {
-	uintptr_t aligned_addr = addr & ~(PAGE_SIZE-1);
-	*p = PAGE_FOR_ADDR(aligned_addr);
-	*pd = (aligned_addr >> 22) & 0x3FF;
-	*pt = (aligned_addr >> 12) & 0x3FF;
-}
+#define MAX_TMP_PAGES	16
 
-static inline uintptr_t page_for_idx(uint32_t pd, uint32_t pt)
-{
-	return (pd << 10) | pt;
-}
+struct paging_context __kernel_paging_ctx = { 0 };
+paging_info_t kernel_paging_ctx = &__kernel_paging_ctx;
 
-static inline uintptr_t vaddr_for_page(uint32_t page)
-{
-	return page << 12;
-}
+static struct {
+	uint32_t present:1;
+	uint32_t in_use:1;
+	uint32_t unused:10;
+	uintptr_t page:20;
+} __attribute__((packed, aligned(4))) __tmp_pages[MAX_TMP_PAGES];
 
-static inline uintptr_t vaddr_for_pt(struct paging_context *ctx, uint32_t pd) 
-{
-	return ctx->linear[pd];
-}
+////////////////////////////////////////////////////////////////////////////////
 
-static inline void *page_align(void *ptr)
+static void page_fault_handler(struct i386_interrupt_frame *frame)
 {
-	uintptr_t addr = (uintptr_t)ptr;
-	return (addr & ~(PAGE_SIZE - 1));
-}
-
-static inline void *page_align_next(void *ptr)
-{
-	uintptr_t addr = (uintptr_t)ptr;
-	if (addr & (PAGE_SIZE - 1) == 0) {
-		return page_align(ptr);
+	/* Determine what to do with the fault. If nothing is done, then panic. */
+	if (frame->errc & 0x01) {
+		/* The error is a page-protection violation. */
+		panic(
+			"Illegal Page Access", 
+			"An attempt to access a page without sufficient privellages."
+		);
 	}
 	else {
-		return page_align(ptr) + PAGE_SIZE;
+		/* Page is not present. Should it be created? */
+		panic(
+			"Page Not Present",
+			"An attempt to access page (%p) which was not mapped into the\n"
+			"linear address space. The exception occured at EIP: %p\n",
+			get_cr2(), frame->eip
+		);
 	}
+
+	/* A generic catch all in case something is missed. */
+	panic("Page Fault Occurred", "An unhandled page fault has occurred.");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void idmap(struct paging_context *ctx, uintptr_t addr, uint32_t flags)
+static inline void idmap(paging_info_t info, enum frame_purpose purpose)
 {
-	map_page(ctx, addr, addr, flags);
-}
-
-void idmap_range(
-	struct paging_context *ctx, uintptr_t start, uintptr_t end, uint32_t flags
-) {
+	uintptr_t start, end;
+	pmm_frame_range(purpose, &start, &end);
+	klogc(sinfo, "idmap(%p -> %p)\n", start, end);
 	for (uintptr_t addr = start; addr < end; addr += PAGE_SIZE) {
-		idmap(ctx, addr, flags);
+		paging_map(info, addr, addr, 0);
 	}
+}
+
+oserr init_paging(void)
+{
+	/* Should we proceed? If paging is not supported, or already enabled then
+	   we should not. */
+	if (!paging_is_supported()) {
+		klogc(serr, "Paging is not supported.\n"); /* Should not happen */
+		return e_fail;
+	}
+
+	if (paging_is_enabled()) {
+		klogc(
+			swarn, "Attempted to initialise paging a second time... Ignoring.\n"
+		);
+		return e_ok;
+	}
+
+	/* Acquire any required memory for the kernel paging context to work 
+	   correctly. */
+	__kernel_paging_ctx.page_dir_physical = pmm_acquire_frame();
+	__kernel_paging_ctx.page_dir = (void*)__kernel_paging_ctx.page_dir_physical;
+	__kernel_paging_ctx.page_tables_linear = (void *)pmm_acquire_frame();
+
+	klogc(sinfo, "Kernel Paging Context is %p\n", kernel_paging_ctx);
+	klogc(sinfo, "Page dir is located at %p\n", __kernel_paging_ctx.page_dir);
+
+	/* Make sure the temporary pages are also established. */
+	for (int i = 0; i < MAX_TMP_PAGES; ++i) {
+		__tmp_pages[i].page = (pmm_acquire_frame() >> 12);
+		__tmp_pages[i].present = 1;
+	}
+
+	/* Perform any initial identity mapping that is required for the Kernel to
+	   operate correctly once paging is enabled. */
+	idmap(kernel_paging_ctx, frame_bios);
+	idmap(kernel_paging_ctx, frame_kernel_wired);
+
+	/* Make sure the initial page directory and page table are mapped. */
+	paging_map(
+		kernel_paging_ctx, 
+		__kernel_paging_ctx.page_dir_physical,
+		__kernel_paging_ctx.page_dir_physical,
+		0
+	);
+
+	paging_map(
+		kernel_paging_ctx, 
+		(uintptr_t)__kernel_paging_ctx.page_tables_linear,
+		(uintptr_t)__kernel_paging_ctx.page_tables_linear,
+		0
+	);
+
+	paging_map(
+		kernel_paging_ctx, 
+		((uintptr_t *)__kernel_paging_ctx.page_tables_linear)[0],
+		((uintptr_t *)__kernel_paging_ctx.page_tables_linear)[0],
+		0
+	);
+
+	/* Install an interrupt handler for the page fault exception. */
+	set_int_handler(0x0E, page_fault_handler);
+
+	/* Enable paging */
+	paging_set_context(kernel_paging_ctx);
+	paging_set_enabled(true);
+
+	return e_ok;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-uintptr_t find_linear_address(
-	struct paging_context *ctx, uintptr_t from, uintptr_t to, uint32_t pages
+static inline void *__acquire_tmp_page(void)
+{
+	klogc(sinfo, "Acquring temporary page.\n");
+	/* Search through the list of temporary pages for one that is not being
+	   used currently. */
+	for (int i = 0; i < MAX_TMP_PAGES; ++i) {
+		if (!__tmp_pages[i].in_use && __tmp_pages[i].present) {
+			uintptr_t address = __tmp_pages[i].page << 12;
+			klogc(sinfo, "Marking temporary page %p as in use.\n", address);
+			__tmp_pages[i].in_use = 1;
+			return (void *)address;
+		}
+	}
+	klogc(swarn, "Failed to acquire a temporary page.\n");
+	return NULL;
+}
+
+static inline void __release_tmp_page(void *ptr)
+{
+	/* Search through the list of temporary pages for the specified one, and
+	   mark it as available. */
+	for (int i = 0; i < MAX_TMP_PAGES; ++i) {
+		uintptr_t page = ((uintptr_t)ptr & 0xFFFFF000) >> 12;
+		if (__tmp_pages[i].page == page) {
+			klogc(sinfo, "Marking temporary page %p as not in use.\n", ptr);
+			__tmp_pages[i].in_use = 0;
+			return;
+		}
+	}
+	klogc(swarn, "Attempted to use page %p as a temporary one.\n", ptr);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool paging_is_supported(void)
+{
+	/* TODO: Actually confirm that this is the case? */
+	return 1;
+}
+
+bool paging_is_enabled(void)
+{
+	return (get_cr0() & (1 << 31));
+}
+
+oserr paging_set_enabled(int flag)
+{
+	set_cr0(get_cr0() | (1 << 31));
+	return e_ok;
+}
+
+oserr paging_set_context(paging_info_t info)
+{
+	if (!info) {
+		klogc(swarn, "Attempted to switch to a NULL paging context.\n");
+		return e_fail;
+	}
+
+	struct paging_context *ctx = info;
+	if (ctx->page_dir_physical & 0xFFF) {
+		klogc(
+			swarn, "Page directory is not correctly aligned! %p\n", 
+			ctx->page_dir_physical
+		);
+		return e_fail;
+	}
+
+	/* Set the CR3 register to the page directory for the given context */
+	set_cr3(ctx->page_dir_physical);
+	klogc(sok, "CR3 set to %p\n", get_cr3());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline void paging_translate_linear(
+	uintptr_t linear, uint32_t *pd, uint32_t *pt
 ) {
-	/* Ensure the search is possible first of all. */
-	uint32_t space = PAGES_FOR_BYTES(to - from);
-	if (pages > space) {
-		klogc(swarn, "*** pages > space (%d > %d)\n", pages, space);
-		return INVALID_LINEAR_ADDRESS_ERROR;
-	}
+	/* Translate a linear address into page directory and page table indexes. */
+	*pd = (linear >> 22) & 0x3FF;
+	*pt = (linear >> 12) & 0x3FF;
+}
 
-	/* Find the initial page directory entry and work from there. */
-	uint32_t page = 0;
-	uint32_t pd = 0;
-	uint32_t pt = 0;
-	page_indexes(from, &page, &pd, &pt);
-
-	/* Find the final page directory entry */
-	uint32_t end_page = 0;
-	uint32_t end_pd = 0;
-	uint32_t end_pt = 0;
-	page_indexes(to, &end_page, &end_pd, &end_pt);
-
-	uint32_t count = 0;
-	uint32_t start_page = page;
-	while (page <= end_page) {
-		/* Is the page available? */
-		if (ctx->cr3[pd].s.present) {
-			/* Are there enough pages in the page table to cover the rest
-			   of the required pages? */
-			if (ctx->fpages[pd] == 0) {
-				count = 0;
-				pt = 0;
-				++pd;
-				page = (page + 0x400) & ~(0x3FF);
-				start_page = page;
-			}
-			else {
-				union page *page_table = (void *)ctx->linear[pd];
-				if (page_table[pt].s.present) {
-					count = 0;
-					start_page = page + 1;
-				}
-				else {
-					++count;
-				}
-				++pt;
-				++page;
-			}
-		}
-		else {
-			count += 0x400;
-			pt += 0x400;
-			page += 0x400;
-		}
-
-		/* Have we found a good range? If so translate page into an actual
-		   linear address and return it. */
-		if (count >= pages) {
-			return ADDR_FOR_PAGE(start_page);
-		}
-
-		/* Increment the search position. */
-		if (pt >= 0x400) {
-			page += pt;
-			pd += (pt / 0x400);
-			pt = (pt % 0x400);
-		}
-	}
-
-	// We failed to find anything.
-	return INVALID_LINEAR_ADDRESS_ERROR;
+static inline uintptr_t paging_translate_index(uint32_t pd, uint32_t pt)
+{
+	/* Translate a set of page directory and page table indexes to a linear
+	   address. */
+	return ((pd & 0x3FF) << 22) | ((pt & 0x3FF) << 12);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void map_page_table(struct paging_context *ctx, uint32_t pdi, uintptr_t frame)
+bool page_is_mapped(paging_info_t info, uintptr_t linear)
 {
-	union page_table *pd = (void *)ctx->cr3;
-	pd[pdi].s.present = 1;
-	pd[pdi].s.write = 1;
-	pd[pdi].s.frame = PAGE_FOR_ADDR(frame);
-
-	/* Setup the linear or physical address for the page table, depending on
-	   whether paging is enabled or not. If paging is not enabled yet, then
-	   the page table _must_ be identity mapped. */
-	if (is_paging_enabled()) {
-		/* We need to create a linear mapping for the page table. */
-		/* TODO: Only search kernel reserved memory! */
-		uintptr_t linear = find_linear_address(ctx, 0x0, 0x00800000, 1);
-		if (linear == INVALID_LINEAR_ADDRESS_ERROR) {
-			panic(
-				"Paging Exception",
-				"Attempted to create a page table using the frame %p at linear "
-				"address %p.",
-				frame, linear
-			);
-		}
-		ctx->linear[pdi] = linear;
-		map_page(ctx, linear, frame, 0x3);
-	}
-	else {
-		ctx->linear[pdi] = frame;
-		idmap(ctx, ctx->linear[pdi], 0x3);
-	}
-	
+	return (paging_linear_to_phys(info, linear, NULL) == e_ok);
 }
 
-void map_page(
-	struct paging_context *ctx, uintptr_t vaddr, uintptr_t frame, uint32_t flags
-) {
-	union page_table *pd = (void *)ctx->cr3;
-
-	uint32_t page = 0;
-	uint32_t pdi = 0;
-	uint32_t pti = 0;
-	page_indexes(vaddr, &page, &pdi, &pti);
-
-	/* Check if page table exists */
-	if (pd[pdi].s.present == 0) {
-		// Page table does not exist
-		map_page_table(ctx, pdi, phys_alloc_frame());
-	}
-
-	union page *pt = vaddr_for_pt(ctx, pdi);
-	pt[pti].i = frame | flags;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-int page_present(struct paging_context *ctx, void *ptr)
-{
-	uint32_t page = 0;
-	uint32_t pd = 0;
-	uint32_t pt = 0;
-	page_indexes((uintptr_t)page_align(ptr), &page, &pd, &pt);
-
-	/* Check the page table is present */
-	if (!ctx->cr3[pd].s.present) return 0;
-
-	/* Check the page is present */
-	union page *page_table = (void *)((uintptr_t *)ctx->linear)[pd];
-	return page_table[pt].s.present;
-}
-
-uintptr_t phys_for_page(struct paging_context *ctx, void *ptr)
-{
-	uint32_t page = 0;
-	uint32_t pd = 0;
-	uint32_t pt = 0;
-	page_indexes((uintptr_t)page_align(ptr), &page, &pd, &pt);
-
-	/* Check the page table is present */
-	if (!ctx->cr3[pd].s.present) return PAGE_TABLE_NOT_ALLOCATED_ERROR;
-
-	union page *page_table = (void *)((uintptr_t *)ctx->linear)[pd];
-	if (!page_table[pt].s.present) return PAGE_NOT_ALLOCATED_ERROR;
-
-	return ADDR_FOR_PAGE(page_table[pt].s.frame);
-}
-
-void *copy_page(struct paging_context *ctx, void *dst, void *src)
-{
-	if (!page_present(ctx, dst)) {
-		klogc(swarn, "*** page dst=%p is not present.", page_align(dst));
-		return NULL;
-	}
-
-	if (!page_present(ctx, src)) {
-		klogc(swarn, "*** page src=%p is not present.", page_align(src));
-		return NULL;
-	}
-	
-	return memcpy(page_align(dst), page_align(src), PAGE_SIZE);
-}
-
-void *zero_page(struct paging_context *ctx, void *dst)
-{
-	if (!page_present(ctx, dst)) {
-		klogc(swarn, "*** page dst=%p is not present.", page_align(dst));
-		return NULL;
-	}
-
-	return memset(page_align(dst), 0, PAGE_SIZE);
-}
-
-void *alloc_page(struct paging_context *ctx, void *ptr, void *frame)
-{
-	if (page_present(ctx, ptr)) {
-		klogc(swarn, "*** page already allocated: %p\n", page_align(ptr));
-		return NULL;
-	}
-
-	if (!frame)
-		frame = (void *)phys_alloc_frame();
-
-	map_page(ctx, (uintptr_t)page_align(ptr), (uintptr_t)frame, 0x3);
-	return page_align(ptr);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void load_cr3(struct paging_context *ctx)
-{
-	klogc(sinfo, "Switching CR3 to page directory: %p\n", ctx->cr3);
-	set_cr3((uintptr_t)ctx->cr3);
-}
-
-void enable_paging(void)
-{
-	klogc(sok, "Enabling paging now!\n");
-	set_cr0(get_cr0() | 0x80000000);
-}
-
-void invalidate_tlb(void)
+oserr paging_phys_to_linear(paging_info_t info, uintptr_t frame, uintptr_t *a)
 {
 	/* TODO */
-}
-
-void init_paging(void)
-{
-	/* We need to setup the initial kernel page directory here, perform any
-	   identity mapping that is required, and get the system into a state for
-	   paging to be enabled. */
-	if (kernel_pd.linear_cr3 || kernel_pd.cr3) {
-		klogc(swarn, "*** Attempted to init_paging() a second time.\n");
-		return;
-	}
-
-	kernel_pd.cr3 = (void *)phys_zero_frame(phys_alloc_frame());
-	kernel_pd.linear_cr3 = (uintptr_t)kernel_pd.cr3;
-	kernel_pd.linear = (void *)phys_zero_frame(phys_alloc_frame());
-	kernel_pd.fpages = (void *)phys_zero_frame(phys_alloc_frame());
-
-	/* The lower 1MiB of memory must be marked present and identity mapped. */
-	idmap_range(&kernel_pd, 0x00000000, 0x00100000, 0x3);
-
-	/* The kernel and its modules also need to be memory mapped, as does the  
-	   initial page directory and frame stack. */
-	idmap_range(&kernel_pd, phys_kernel_start(), phys_modules_end(), 0x3);
-	idmap_range(&kernel_pd, phys_frame_stack(), phys_frame_stack_end(), 0x3);
-	idmap(&kernel_pd, (uintptr_t)kernel_pd.cr3, 0x3);
-	idmap(&kernel_pd, (uintptr_t)kernel_pd.linear, 0x3);
-	idmap(&kernel_pd, (uintptr_t)kernel_pd.fpages, 0x3);
-
-	/* We need to perform a final operation, to ensure that fpages 
-	   (free page count) is populated with the correct values. This should help
-	   finding available page tables in the future much faster. */
-	for (uint32_t pd = 0; pd < 0x400; ++pd) {
-		if (!kernel_pd.cr3[pd].s.present) {
-			kernel_pd.fpages[pd] = 0x400;
-		}
-		else {
-			union page *page_table = (void *)kernel_pd.linear[pd];
-			for (uint32_t pt = 0; pt < 0x400; ++pt) {
-				kernel_pd.fpages[pd] += (page_table[pt].s.present ? 0 : 1);
-			}
-		}
-	}
-
-	/* Let's enable paging. If everything is setup correctly, then nothing 
-	   should appear to change! */
-	load_cr3(&kernel_pd);
-	enable_paging();
-}
-
-oserr clone_kernel_paging_context(struct paging_context **ctx)
-{
-	/* TODO */
+	klogc(swarn, "%s:%s is not implemented.\n", __FILE__, __FUNCTION__);
 	return e_fail;
+}
+
+oserr paging_linear_to_phys(paging_info_t info, uintptr_t linear, uintptr_t *f)
+{
+	/* Check if the page exists. If it does not look up the phyiscal frame */
+
+	/* The first task is to determine where in the paging directory the address
+	   points to. */
+	uint32_t pd, pt;
+	paging_translate_linear(linear, &pd, &pt);
+
+	/* Fetch the current page directory and page table for the page context. */
+	struct paging_context *ctx = info;
+
+	/* Check if the page table exists in the page directory. */
+	if (!ctx->page_dir[pd].s.present) {
+		klogc(
+			sinfo, "Page table %d does not exist in page directory %p\n",
+			pd, ctx->page_dir_physical
+		);
+		return e_fail;
+	}
+
+	/* Check if the page exists in the page table */
+	union page *table = (void *)(ctx->page_tables_linear[pd]);
+	if (!table[pt].s.present) {
+		klogc(sinfo, "Page %d does not exist in page table %d.\n", pt, pd);
+		return e_fail;
+	}
+
+	/* The page exists. */
+	if (f) *f = (table[pt].s.frame << 12);
+	return e_ok;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static uintptr_t validate_linear_address(paging_info_t info, uintptr_t linear)
+{
+	/* Make sure the specified linear address is still available for use.
+	   This is necessary because of the page table creation strategy being
+	   employed. */
+	klogc(sinfo, "Validating the availablity of linear address %p\n", linear);
+
+	/* We're going to work repeatedly check, moving the linear address on by
+	   a single page each time we find the linear address to be invalid. */
+	bool is_valid = true;
+	do {
+		if (page_is_mapped(info, linear) == false) {
+			linear += PAGE_SIZE;
+			is_valid = false;
+		}
+		else {
+			is_valid = true;
+		}
+	} while (!is_valid);
+
+	/* We now have a valid linear address */
+	klogc(sok, "Updated linear address to %p\n", linear);
+	return linear;
+}
+
+oserr paging_map(
+	paging_info_t info, uintptr_t frame, uintptr_t linear, uint8_t flags
+) {
+	/* This is reasonably complex. We have multiple scenarios to consider when
+	   mapping a page.
+
+	   1. Paging is not yet enabled.
+	   2. Page table exists and there is no current entry.
+	   3. Page table exists and there is a current entry.
+	   4. Page table does not exist, but there is an available page for it.
+	   5. Page table does not exist, and requires a new page table for the page 
+	      table to be created.
+	   */
+
+	struct paging_context *ctx = info;
+	klogc(sinfo, "Mapping frame %p to linear %p\n", frame, linear);
+
+	/* First of all, determine where the new entry needs to exist, and whether
+	   there is currently a page table there or not. This is common across all 
+	   paths. */
+	uint32_t pd, pt;
+	paging_translate_linear(linear, &pd, &pt);
+	klogc(sinfo, "Linear translation: pd=%d pt=%d\n", pd, pt);
+
+	if (!ctx->page_dir[pd].s.present) {
+		klogc(sinfo, "Required page table %d needs to be created\n", pd);
+
+		/* No page table currently exists. We need to create one. We need to
+		   careful not to dereference the new frame however, as when paging is
+		   enabled, it could cause a #GPF. */
+		uintptr_t pt_frame = pmm_acquire_frame();
+		uintptr_t pt_linear = 0;
+		klogc(
+			sinfo, "Using frame %p for page table %d.\n", pt_frame, pd
+		);
+
+		if (!paging_is_enabled()) {
+			/* Paging is not enabled. We can dereference the frame as needed. */
+			memset((void *)pt_frame, 0, PAGE_SIZE);
+
+			klogc(
+				sinfo, "Mapping page table %d to linear %p\n", 
+				pt_linear, pd
+			);
+
+			/* Add the page table into the directory. */
+			klogc(sinfo, "directory = %p, pd = %d\n", ctx->page_dir, pd);
+			ctx->page_dir[pd].s.frame = (pt_frame >> 12);
+			ctx->page_dir[pd].s.present = 1;
+			ctx->page_dir[pd].s.write = 1;
+
+			/* Map the page table as a page, using identity mapping. */
+			pt_linear = pt_frame;
+			if (paging_map(info, pt_frame, pt_linear, flags) != e_ok) {
+				klogc(
+					serr, "Failed to identity map page table %d (%p)\n",
+					pd, pt_linear
+				);
+				return e_fail;
+			}
+
+			/* Save the linear address of the page table for future use. */
+			ctx->page_tables_linear[pd] = pt_linear;
+		}
+		else {
+			/* Paging is enabled. We must not dereference the page table frame
+			   until we have mapped into memory. This may pose a chicken and the
+			   egg style problem. 
+
+			   Map the frame into a temporary page so that we can use it. */
+			void *tmp = __acquire_tmp_page();
+			if (paging_map(info, pt_frame, (uintptr_t)tmp, flags) != e_ok) {
+				klogc(
+					serr, 
+					"Failed to map page table %d (%p) against tmp page %p\n",
+					pd, pt_frame, tmp
+				);
+				__release_tmp_page(tmp);
+				return e_fail;
+			}
+			memset(tmp, 0, PAGE_SIZE);
+
+			/* Add the page table into the directory. */
+			ctx->page_dir[pd].s.frame = (pt_frame >> 12);
+			ctx->page_dir[pd].s.present = 1;
+			ctx->page_dir[pd].s.write = 1;
+
+			__release_tmp_page(tmp);
+
+			/* Now that the frame is successfully cleared, we need to map the
+			   page table into the linear address space so we can use it 
+			   properly. */
+			pt_linear = paging_find_linear(info);
+			if (paging_map(info, pt_frame, pt_linear, flags) != e_ok) {
+				klogc(
+					serr, "Failed to map page table %d (%p) to linear %p\n",
+					pd, pt_frame, pt_linear
+				);
+				return e_fail;
+			}
+
+			pt_linear = validate_linear_address(info, pt_linear);
+
+			/* Save the linear address of the page table for future use. */
+			ctx->page_tables_linear[pd] = pt_linear;
+		}
+	}
+
+	/* Check to ensure there isn't already an entry for the page. */
+	union page *table = (void *)(ctx->page_tables_linear[pd]);
+	if (table[pt].s.present) {
+		klogc(swarn, "Page entry already exists for %p\n", linear);
+		if (flags & f_existing) {
+			/* Page is already mapped. If it is mapped to a different frame
+			   then ensure the new frame is released. */
+			if (table[pt].s.frame != (frame >> 12)) {
+				pmm_release_frame(frame);
+			}
+			return e_ok;
+		}
+		else {
+			/* Page is already mapped, and it is an illegal operation to 
+			   remap. */
+			return e_fail;
+		}
+	}
+
+	klogc(
+		sinfo, "Completing the mapping of frame %p to linear %p\n", 
+		frame, linear
+	);
+
+	/* At this point the page table should exist. We can now map the page */
+	table[pt].s.frame = (frame >> 12);
+	table[pt].s.present = 1;
+	table[pt].s.write = 1;
+
+	/* All done. */
+	return e_ok;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+uintptr_t paging_find_linear(paging_info_t info)
+{
+	/* Work through the page directory and find the first available page that
+	   is not used. */
+	struct paging_context *ctx = info;
+	for (uint32_t page = 0; page < (1024 * 1024); ++page) {
+		uint32_t pd = page >> 10;
+		uint32_t pt = page & 0x3FF;
+
+		if (ctx->page_dir[pd].s.present) {
+			union page *table = (void *)(ctx->page_tables_linear[pd]);
+			if (!table[pt].s.present) {
+				return (pd << 22) | (pt << 12);
+			}
+		}
+		else {
+			return (pd << 22) | (pt << 12);
+		}
+	}
+	return 0;
 }
 
 #endif

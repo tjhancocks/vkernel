@@ -37,6 +37,13 @@ static inline uintptr_t get_cr3(void)
 	return (cr3 & ~(PAGE_SIZE - 1));
 }
 
+static inline uintptr_t get_cr2(void)
+{
+	uintptr_t cr2;
+	__asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+	return cr2;
+}
+
 static inline void set_cr0(uintptr_t cr0)
 {
 	__asm__ __volatile__("mov %0, %%cr0" :: "r"(cr0));

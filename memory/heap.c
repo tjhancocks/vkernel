@@ -21,296 +21,182 @@
  */
 
 #include <heap.h>
-#include <arch.h>
+#include <pmm.h>
+#include <vmm.h>
 #include <print.h>
-#include <debug.h>
-
-#define MAXIMUM_ALLOC_ATTEMPTS	2
-struct heap kernel_heap = { 0 };
+#include <panic.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void *__heap_alloc_pages(struct heap *heap, uint32_t count)
+static inline uintptr_t heap_align(uintptr_t address)
 {
-	uintptr_t addr = find_linear_address(
-		heap->page_ctx, 0x00400000, 0xFFFFFFFF, count
-	);
-	if (addr == INVALID_LINEAR_ADDRESS_ERROR) {
-		klogc(swarn, "*** Failed to perform heap allocation\n");
-		return NULL;
-	}
-	void *ptr = addr;
-
-	/* Ensure all pages are allocated. */
-	for (uint32_t i = 0; i < count; ++i) {
-		void *page = alloc_page(heap->page_ctx, (void *)(addr), NULL);
-		page = zero_page(heap->page_ctx, page);
-		addr += PAGE_SIZE;
-	}
-
-	return ptr;
+	return (address + 0x04) & ~(0x3);
 }
 
-struct heap_container *__heap_alloc_container(struct heap *heap)
+static inline uintptr_t block_start(struct heap_block *block)
 {
-	struct heap_container *container = (void *)__heap_alloc_pages(heap, 1);
+	return heap_align((uintptr_t)block + sizeof(*block));
+}
 
-	/* Configure the container to make sure it behaves correctly. */
-	container->next_link = NULL;
-	container->prev_link = NULL;
-	container->blocks = (void *)((uintptr_t)(container) + (sizeof(void *) * 3));
-
-	return container;
+static inline uint32_t block_size(uint32_t alloc_size)
+{
+	return heap_align(alloc_size + heap_align(sizeof(struct heap_block)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void init_heap(
-	struct heap *heap, struct paging_context *ctx, uint32_t size_kib
-) {
-	/* Setup the provided heap structure. */
+oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
+{
+	klogc(sinfo, "Constructing heap (base %p, limit %p)\n", base, limit);
+
+	/* Validate everything that has been provided. A heap must be of a certain
+	   size, aligned to a page boundary and above a certain point in memory. */
 	if (!heap) {
-		klogc(swarn, "*** Expected a heap. Got NULL.\n");
-		return;
+		klogc(serr, "No heap reference provided. Aborting.\n");
+		return e_fail;
 	}
 
-	/* We need to ensure we keep track of the appropriate paging context for 
-	   this heap, how many pages it uses and where they start. We need this
-	   information so that we can destroy the heap in the future if required. */
-	heap->page_ctx = ctx;
-	heap->pages = PAGES_FOR_KIB(size_kib);
-	heap->base = (uintptr_t)__heap_alloc_pages(heap, heap->pages);
+	if ((base & 0xFFF) || (limit & 0xFFF) || (base >= limit)) {
+		klogc(
+			serr, 
+			"Heap is not aligned (%p:%p). It should be page aligned\n",
+			base, limit
+		);
+		return e_fail;
+	}
 
-	/* Each container will contain a specific number of blocks. This can vary
-	   from architecture to architecture so we need to calculate it here rather
-	   than hard code it. Thankfully this only needs to be done once.
-	   Each container will be a single page in size. */
-	heap->container_blocks = (
-		(PAGE_SIZE - (sizeof(void*) * 3)) / sizeof(struct heap_block)
+	/* TODO: Check proposed heap size. */
+
+	/* The heap will require the first page in itself to be allocated. This is
+	   so the initial data structures can be constructed (the heap manages its
+	   own memory). */
+	klogc(sinfo, "Acquiring page for heap: %p\n", base);
+	if (vmm_acquire_page(base) != e_ok) {
+		klogc(serr, "Failed to acquire initial page for heap.\n");
+		return e_fail;
+	}
+
+	/* Get a reference to the heap and setup the initial information. */
+	klogc(sinfo, "Casting base into heap structure\n");
+	*heap = (void *)base;
+	(*heap)->base = base;
+	(*heap)->limit = limit;
+	(*heap)->block_count = 1;
+	(*heap)->free_blocks = 1;
+	(*heap)->first = (void *)heap_align(base + sizeof(**heap));
+	(*heap)->last = (*heap)->first;
+
+	klogc(sinfo, "Heap structure established at %p\n", *heap);
+	klogc(sinfo, "Heap first block = %p\n", (*heap)->first);
+
+	/* Setup the first block. */
+	(*heap)->first->state = heap_block_free;
+	(*heap)->first->size = (limit - block_start((*heap)->first));
+	(*heap)->first->owner = *heap;
+	(*heap)->first->next = NULL;
+	(*heap)->first->back = NULL;
+
+	klogc(
+		sinfo, "Heap first block %p is %u bytes in size. First alloc: %p\n", 
+		(*heap)->first, (*heap)->first->size, block_start((*heap)->first)
 	);
 
-	/* We now need to allocate the first container. Containers are used to track
-	   "blocks", each container tracking the previously mentioned number of 
-	   blocks. When more blocks are needed a new container is created and a 
-	   linked list of containers produced. */
-	heap->first_container = __heap_alloc_container(heap);
-	heap->last_container = heap->first_container;
-
-	/* And configure the first block to act as "free" space. */
-	heap->first_container->blocks[0].flags = heap_block_present;
-	heap->first_container->blocks[0].offset = heap->base;
-	heap->first_container->blocks[0].size = (heap->pages * PAGE_SIZE);
-
-	/* At this point the basic heap should be set up and ready for use. */
+	/* Heap setup and constructed successfully. */
+	return e_ok;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void describe_heap(struct heap *heap)
+static oserr heap_map_page(uintptr_t addr)
 {
-	klog(">> describe heap: %p\n", heap);
-	klog("   paging context: %p\n", heap->page_ctx);
-	klog("   pages: %d\n", heap->pages);
-	klog("   base: %p\n", heap->base);
-	klog("   blocks per container: %d\n", heap->container_blocks);
-	klog("   first container: %p\n", heap->first_container);
-	klog("   last container: %p\n", heap->last_container);
-
-	struct heap_container *ptr = heap->first_container;
-	do {
-		klog("   + container: %p (blocks: %p)\n", ptr, ptr->blocks);
-		for (int i = 0; i < heap->container_blocks; ++i) {
-			struct heap_block *blk = &ptr->blocks[i];
-			klog(
-				"   |- block %d: %p (%d bytes) %s/%s\n",
-				i, blk->offset, blk->size,
-				(blk->flags & heap_block_allocated) ? "allocated" : "free",
-				(blk->flags & heap_block_present) ? "present" : "missing"
-			);
-		}
+	if (vmm_acquire_page(addr) != e_ok) {
+		panic(
+			"Heap Allocation Failure",
+			"The heap has been unable to correctly acquire memory for "
+			"an allocation."
+		);
 	}
-	while ((ptr = ptr->next_link) != NULL);
+	return e_ok;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-int __chk_heap_block_wants_coalesce(struct heap_block *blk)
+static oserr heap_map_pages(struct heap_block *block)
 {
-	return (blk->flags & heap_block_present) 
-		&& !(blk->flags & heap_block_allocated);
-}
-
-void heap_coalesce(struct heap *heap)
-{
-	/* TODO: This is a naive implementation of a heap coalescing function, and
-	   is in the order of O(N^2) in the worst case scenario. This is fine for
-	   short term, and over small collections of blocks, but is not good for use
-	   across an entire heap when it is large, or for frequent use in a fully
-	   developed/fleshed out kernel. */
-	struct heap_container *ptr = heap->first_container;
-	do {
-
-		for (int i = 0; i < heap->container_blocks - 1; ++i) {
-			struct heap_block *blk = &ptr->blocks[i];
-
-			/* Are we present and not allocated? As in do we have free bytes
-			   associated to the block? If not then skip to the next block. */
-			if (!__chk_heap_block_wants_coalesce(blk)) {
-				continue;
-			}
-
-			/* Ensure we actually have some size. If not then make sure we're 
-			   not marked as allocated or present. */
-			if (blk->size == 0) {
-				blk->flags = heap_block_unused;
-				continue;
-			}
-
-			/* Scan forward for a block/allocation that is next to our current
-			   block. */
-			for (int j = i + 1; j < heap->container_blocks; ++j) {
-				struct heap_block *sblk = &ptr->blocks[j];
-
-				/* Check that the subject block is not allocated and fits the
-				   same criteria as above. */
-				if (!__chk_heap_block_wants_coalesce(sblk)) {
-					continue;
-				}
-
-				/* If its an invalid size, then skip. We'll catch it later. */
-				if (sblk->size == 0) {
-					continue;
-				}
-
-				/* Check for the valid scenarios. The allocations must reside 
-				   directly next to each other for this to be a valid 
-				   operation. */
-				if (sblk->offset == (blk->offset - sblk->size)) {
-					sblk->size += blk->size;
-					blk->flags = heap_block_unused;
-					blk->size = 0;
-				}
-				else if (sblk->offset == (blk->offset + blk->size)) {
-					blk->size += sblk->size;
-					sblk->flags = heap_block_unused;
-					sblk->size = 0;
-				}
-			}
-		}
-
+	uintptr_t base = (uintptr_t)block;
+	uintptr_t limit = block_start(block) + block->size;
+	for (uintptr_t addr = base; addr < limit; addr += FRAME_SIZE) {
+		(void)heap_map_page(addr); /* Ignore result - handled above. */
 	}
-	while ((ptr = ptr->next_link) != NULL);
+	return e_ok;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void *heap_alloc(struct heap *heap, uint32_t size)
 {
-	uintptr_t allocation_offset = 0;
+	/* Search through the blocks in the heap for a suitable block to use for the
+	   requested allocation. When a block is found, it will be divided into
+	   2 blocks (if large enough), one being a "free" block and the other
+	   being used for the allocation. */
+	if (!heap)
+		return NULL;
 
-	for (int attempt = 1; attempt <= MAXIMUM_ALLOC_ATTEMPTS; ++attempt)
-	{
-		struct heap_block *avail_blk = NULL;
-		uint32_t avail_blk_count = 0;
+	uint32_t req_block_size = block_size(size);
+	klogc(
+		sinfo, 
+		"Using heap %p. Requested size is %u bytes. Require %u bytes minimum\n",
+		heap, size, req_block_size
+	);
 
-		struct heap_container *ptr = heap->first_container;
-		do {
-			for (int i = 0; i < heap->container_blocks; ++i) {
-				struct heap_block *blk = &ptr->blocks[i];
+	struct heap_block *ptr = heap->first;
+	do {
+		if (ptr->state == heap_block_free) {
 
-				/* If we've found an available block and we haven't already 
-				   found one record it. If we've already found an allocation  
-				   point, then use this missing block for it. */
-				if (!(blk->flags & heap_block_present)) {
-					if (allocation_offset) {
-						blk->flags |= heap_block_allocated | heap_block_present;
-						blk->size = size;
-						blk->offset = allocation_offset;
-						return (void *)blk->offset;
-					}
-					
-					if (!avail_blk) {
-						avail_blk = ptr;
-					}
-					++avail_blk_count;
-				}
+			/* Is the block large enough to get an allocation out of? */
+			if (ptr->size >= req_block_size) {
+				/* We can make a division. First record some of the existing
+				   information so that we can update the block list afterward */
+				uint32_t orig_size = ptr->size;
+				struct heap_block *next = ptr->next;
 
-				/* Make sure we don't have an allocation in progress before
-				   continuing */
-				if (allocation_offset) {
-					continue;
-				}
+				/* Allocate this block first */
+				ptr->state = heap_block_used;
+				ptr->size = heap_align(size);
+				ptr->next = (void *)(block_start(ptr) + ptr->size);
 
-				/* Ignore already allocated blocks */
-				if (blk->flags & heap_block_allocated) 
-					continue;
+				/* Setup the new block */
+				heap_map_page((uintptr_t)ptr->next);
+				ptr->next->state = heap_block_free;
+				ptr->next->next = next;
+				ptr->next->back = ptr;
+				ptr->next->size = orig_size - (
+					(uintptr_t)ptr->next - (uintptr_t)ptr
+				);
+				ptr->next->owner = heap;
+				next->back = ptr->next;
 
-				/* Ignore blocks that are not big enough */
-				if (blk->size < size)
-					continue;
+				/* Update the heap. We now have more blocks in the heap.
+				   However the free block count stays the same. */
+				heap->block_count++;
 
-				/* Found a block of space big enough for the allocation.
-				   Record where the allocation should be and then adjust the 
-				   free space accordingly. */
-				allocation_offset = blk->offset;
-				blk->size -= size;
-				blk->offset += size;
-
-				if (avail_blk) {
-					avail_blk->flags |= (
-						heap_block_allocated | heap_block_present
-					);
-					avail_blk->size = size;
-					avail_blk->offset = allocation_offset;
-					return (void *)avail_blk->offset;
-				}
+				/* Return the new block */
+				return (void *)block_start(ptr);
 			}
-		}
-		while ((ptr = ptr->next_link) != NULL);
+			else if (ptr->size >= size) {
+				/* We can use the block */
+				ptr->state = heap_block_used;
+				heap->free_blocks--;
+				return (void *)block_start(ptr);
+			}
 
-		/* Failed to find an allocation or available block. Attempt to resolve
-		   this issue. If an allocation_offset has been found, then we simply
-		   need more blocks to record the allocation. */
-		if (allocation_offset && avail_blk_count == 0) {
-			struct heap_container *container = __heap_alloc_container(heap);
-			heap->last_container->next_link = container;
-			container->prev_link = heap->last_container;
-			heap->last_container = container;
-			continue;
 		}
+	} while ((ptr = ptr->next) != NULL);
 
-		/* If we hit this point then we've failed to find an allocation or 
-		   block. Attempt to coalesce all available blocks together. */
-		if (attempt < MAXIMUM_ALLOC_ATTEMPTS) {
-			heap_coalesce(heap);
-		}
-	}
-
-	/* We failed to find anything */
-	klogc(swarn, "*** Failed to allocate on heap: %p\n", heap);
+	/* Reaching this point indicates that we failed to find anything. Return
+	   NULL to indicate a failed allocation. */
 	return NULL;
 }
 
-void heap_free(struct heap *heap, void *fptr)
+void heap_free(void *ptr)
 {
-	/* We need to find the block in the heap associated with the provided 
-	   pointer. */
-	struct heap_container *ptr = heap->first_container;
-	do {
-
-		for (int i = 0; i < heap->container_blocks; ++i) {
-			struct heap_block *blk = &ptr->blocks[i];
-
-			if (blk->offset == (uintptr_t)fptr) {
-				/* Remove the allocation mark for this block. */
-				blk->flags &= ~heap_block_allocated;
-				heap_coalesce(heap);
-				return;
-			}
-		}
-
-	}
-	while ((ptr = ptr->next_link) != NULL);
-
-	klogc(swarn, "*** Failed to free '%p' in heap '%p'.\n", fptr, heap);
+	/* TODO */
 }
