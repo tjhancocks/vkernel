@@ -226,3 +226,47 @@ uint32_t lltoa_base(char *ptr, signed long long n, uint8_t base)
 
 	return (len - 1);
 }
+
+uint32_t ftoa(char *ptr, double v, int precision)
+{
+	/* TODO: This implementation could be better! It currently has bugs and 
+	   doesn't handle all floating point conversion cases. */
+	
+	uint32_t len = 0;
+
+	/* Handle the precision first */
+	if (precision > 0) {
+		double dV = v - (long long)v;
+
+		while ((long long)dV != dV) {
+			dV *= 10;
+		}
+
+		char precision_buffer[32] = { 0 };
+		char *precision_ptr = precision_buffer + 30;
+		uint32_t precision_len = lltoa_base(precision_ptr, (long long)dV, 10);
+		precision_ptr -= precision_len;
+
+		ptr -= precision;
+		for (int i = 0; i < precision; ++i) {
+			if (i < precision_len) {
+				*ptr++ = *precision_ptr++;
+				len++;
+			}
+			else {
+				*ptr++ = '0';
+				len++;
+			}
+		}
+		ptr -= precision;
+
+		++len;
+		*ptr-- = '.';
+	}
+
+	/* Render the integer aspect last */
+	len += lltoa_base(ptr, (long long)v, 10);
+	
+	/* Finish up */
+	return len;
+}

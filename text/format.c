@@ -137,6 +137,7 @@ void write_format_va(
 		     0 represents no precision */
 		int precision = -2;
 		if (*read == '.') {
+			precision = 0;
 			++read;
 			while (*read == '*' || (*read >= '0' && *read <= '9')) {
 				switch (*read) {
@@ -171,7 +172,7 @@ void write_format_va(
 					}
 					break;
 				case 'L': /* Long Double */
-					mods |= mod_long_double;
+					mods = mod_long_double;
 				default:
 					break;
 			}
@@ -255,6 +256,22 @@ void write_format_va(
 			*tmp_ptr = c;
 			goto WRITE_TMP_BUFFER;
 		}
+		else if (type == type_double) {
+			if (mods == mod_long_double) {
+				/* TODO */
+			}
+			else {
+				double d = (double)va_arg(va, double);
+				if (precision == -1) {
+					precision = (int)va_arg(va, int);
+				}
+				else if (precision == -2) {
+					precision = 6;
+				}
+				len = ftoa(tmp_ptr, d, precision);
+				tmp_ptr -= len;
+			}
+		}
 		else if (mods == mod_int) {
 			if (type == type_unsigned) {
 				unsigned int ui = (unsigned int)va_arg(va, unsigned int);
@@ -294,9 +311,6 @@ void write_format_va(
 				len = lltoa_base(tmp_ptr, sll, base);
 				tmp_ptr -= len;
 			}
-		}
-		else if (mods == mod_long_double) {
-			/* TODO */
 		}
 
 	ALIGN_AND_PAD:
