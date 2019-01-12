@@ -164,10 +164,10 @@ void write_format_va(
 					break;
 				case 'l': /* Long / Long Long */
 					if (mods == mod_long) {
-						mods |= mod_long_long;
+						mods = mod_long_long;
 					}
 					else if (mods != mod_long_long) {
-						mods |= mod_long;
+						mods = mod_long;
 					}
 					break;
 				case 'L': /* Long Double */

@@ -63,11 +63,14 @@ TOOL.LD.flags = -nostdlib -nostartfiles -L$(BUILD)
 # TOOLING
 
 TOOL.CC = $(shell which $(TARGET.TRIPLET)-gcc)
+LIBGCC = $(shell $(TOOL.CC) -print-libgcc-file-name)
+
 TOOL.LD = $(shell which $(TARGET.TRIPLET)-ld)
 TOOL.AS = $(shell which nasm)
 TOOL.TAR = $(shell which tar)
 
 TOOL.Q = $(shell which qemu-system-x86_64)
+
 
 ################################################################################
 # HIGH LEVEL RULES
@@ -95,7 +98,7 @@ install: clean kernel
 # BUILD RULES
 
 $(KERNEL.binary): $(OBJECTS)
-	$(TOOL.LD) -Tlink.ld $(TOOL.LD.flags) -o $@ $^
+	$(TOOL.LD) -Tlink.ld $(TOOL.LD.flags) -o $@ $^ $(LIBGCC)
 
 $(OBJECTS.c):
 	$(eval SRC := $(@:$(BUILD)%.o=$(ROOT)%.c))

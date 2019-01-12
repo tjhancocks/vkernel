@@ -140,7 +140,7 @@ uint32_t ltoa_base(char *ptr, signed long n, uint8_t base)
 	register long dV = 0;
 	register uint32_t len = 1;
 
-	while (v >= (int)base) {
+	while (v >= (long)base) {
 		dV = v % base;
 		v /= base;
 		*ptr-- = *(digits + dV);
@@ -163,10 +163,66 @@ uint32_t ltoa_base(char *ptr, signed long n, uint8_t base)
 
 uint32_t ulltoa_base(char *ptr, unsigned long long n, uint8_t base)
 {
-	return 0;
+	const char *digits = DIGITS(base);
+	base = BASE(base);
+
+	if (n == 0) {
+		*ptr = *digits;
+		return 1;
+	}
+
+	register unsigned long long v = n;
+	register unsigned long long dV = 0;
+	register uint32_t len = 1;
+
+	while (v >= (unsigned long long)base) {
+		dV = v % base;
+		v /= base;
+		*ptr-- = *(digits + dV);
+		++len;
+	}
+
+	if (v > 0) {
+		dV = v % base;
+		*ptr-- = *(digits + dV);
+		++len;
+	}
+
+	return (len - 1);
 }
 
 uint32_t lltoa_base(char *ptr, signed long long n, uint8_t base)
 {
-	return 0;
+	const char *digits = DIGITS(base);
+	base = BASE(base);
+
+	if (n == 0) {
+		*ptr = *digits;
+		return 1;
+	}
+
+	char neg = (n < 0);
+	register long long v = n * (neg ? -1 : 1);
+	register long long dV = 0;
+	register uint32_t len = 1;
+
+	while (v >= (long long)base) {
+		dV = v % base;
+		v /= base;
+		*ptr-- = *(digits + dV);
+		++len;
+	}
+
+	if (v > 0) {
+		dV = v % base;
+		*ptr-- = *(digits + dV);
+		++len;
+	}
+
+	if (neg) {
+		*ptr-- = '-';
+		++len;
+	}
+
+	return (len - 1);
 }
