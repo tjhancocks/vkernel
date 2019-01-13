@@ -45,6 +45,7 @@ struct heap_block
 {
 	uint32_t state;
 	uint32_t size;
+	uintptr_t start;
 	struct heap *owner;
 	struct heap_block *next;
 	struct heap_block *back;

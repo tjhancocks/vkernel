@@ -84,12 +84,15 @@ uintptr_t vmm_acquire_any_page(void)
 
 oserr vmm_acquire_page(uintptr_t linear)
 {
+	/* Make sure the linear address is aligned, or we will end up with errors */
+	linear &= ~(PAGE_SIZE - 1);
+
 	/* Acquire a physical frame from the PMM and map it to the above linear
 	   address. */
+
 	if (!vmm_address_valid(linear)) {
 		void *ctx = __vmm_current_context();
 		uintptr_t frame = pmm_acquire_frame();
-		klogc(sinfo, "vmm_acquire_page(%p) = %p\n", linear, frame);
 		if (paging_map(ctx, frame, linear) != e_ok){
 			klogc(serr, "Failed to acquire page %p\n", linear);
 			return e_fail;

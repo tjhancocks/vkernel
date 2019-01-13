@@ -184,6 +184,9 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				ptr->next->owner = heap;
 				next->back = ptr->next;
 
+				/* Make sure the required pages are mapped. */
+				heap_map_pages(ptr);
+
 				/* Update the heap. We now have more blocks in the heap.
 				   However the free block count stays the same. */
 				heap->block_count++;
@@ -195,6 +198,7 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				/* We can use the block */
 				ptr->state = heap_block_used;
 				heap->free_blocks--;
+				heap_map_pages(ptr);
 				return (void *)block_start(ptr);
 			}
 
@@ -224,27 +228,9 @@ void heap_dealloc(struct heap *heap, void *ptr)
 	/* Mark the block as free, and try to collect neighbouring blocks. */
 	block->state = heap_block_free;
 
-	if (block->back && block->back->state == heap_block_free) {
-		klogc(sinfo, "Merging backwards.\n");
-
-		/* Merge with the previous block */
-		block->back->next = block->next;
-		block->back->size += block->size + heap_align(sizeof(*block));
-		if (block->next) block->next->back = block->back;
-
-		/* Become the previous block. */
-		block = block->back;
-	}
-
-	if (block->next && block->next->state == heap_block_free) {
-		klogc(sinfo, "Merging forwards.\n");
-		
-		/* Merge with the next block */
-		block->next = block->next->next;
-		block->size += block->next->size + heap_align(sizeof(*block));
-		if (block->next->next) block->next->next->back = block;
-	}
+	/* TODO: Merging blocks together */
 
 	/* Check the entire range of the block's memory. Can we unmap any pages? */
+	klogc(sinfo, "Unmap the pages used by the heap.\n");
 	heap_unmap_pages(block);
 }

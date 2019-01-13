@@ -50,7 +50,6 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	init_physical_memory(mb);
 	init_arch();
 	init_display();
-	hang_forever();
 
 	/* Setup the kernel context. This will provide access to a heap and paging
 	   functionality in the short term. */

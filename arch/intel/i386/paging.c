@@ -39,6 +39,7 @@ paging_info_t kernel_paging_ctx = &__kernel_paging_ctx;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool page_is_mapped(paging_info_t info, uintptr_t linear);
 static void page_fault_handler(struct i386_interrupt_frame *frame)
 {
 	/* Determine what to do with the fault. If nothing is done, then panic. */
@@ -51,12 +52,22 @@ static void page_fault_handler(struct i386_interrupt_frame *frame)
 	}
 	else {
 		/* Page is not present. Should it be created? */
-		panic(
-			"Page Not Present",
-			"An attempt to access page (%p) which was not mapped into the\n"
-			"linear address space. The exception occured at EIP: %p\n",
-			get_cr2(), frame->eip
-		);
+		if (page_is_mapped(kernel_paging_ctx, get_cr2())) {
+			panic(
+				"Page is mapped, but not present?",
+				"An attempt to access page (%p) which was not mapped into the\n"
+				"linear address space. The exception occured at EIP: %p\n",
+				get_cr2(), frame->eip
+			);
+		}
+		else {
+			panic(
+				"Page Not Present",
+				"An attempt to access page (%p) which was not mapped into the\n"
+				"linear address space. The exception occured at EIP: %p\n",
+				get_cr2(), frame->eip
+			);
+		}
 	}
 
 	/* A generic catch all in case something is missed. */
@@ -201,7 +212,7 @@ oserr paging_linear_to_phys(paging_info_t info, uintptr_t linear, uintptr_t *f)
 	/* Check if the page exists in the page table */
 	union page *table = (void *)paging_address_for_table(info, pd);
 	if (!table[pt].s.present) {
-		klogc(sinfo, "Page %d does not exist in page table %d.\n", pt, pd);
+		// klogc(sinfo, "Page %d does not exist in page table %d.\n", pt, pd);
 		return e_fail;
 	}
 
@@ -234,7 +245,14 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 	);
 
 	/* Acquire a new frame for use in the table. */
-	uintptr_t table_frame = pmm_acquire_frame();
+	uintptr_t table_frame;
+	if (table == PAGE_TABLE_TABLE && !paging_is_enabled()) {
+		/* This is a special scenario. */
+		table_frame = ctx->page_dir_physical;
+	}
+	else {
+		table_frame = pmm_acquire_frame();
+	}
 	dir[table].s.present = 1;
 	dir[table].s.write = 1;
 	dir[table].s.frame = table_frame >> 12;
@@ -279,11 +297,6 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 
 	paging_tlb_invalidate(true, (uintptr_t)page_table);
 
-	if (table == 4) {
-		memdump((void *)dir, 12 * 4, 4);
-		memdump((void *)page_table, 12 * 4, 4);
-	}
-
 	/* At this point we know everything succeed correctly. */
 	klogc(sok, "Created page table %d successfully.\n", table);
 	return e_ok;
@@ -300,6 +313,8 @@ oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear)
 	bool tlb_shootdown_required = false;
 	struct paging_context *ctx = (void *)info;
 	union page_table *dir = (void *)paging_address_for_directory(info);
+
+	linear &= ~(PAGE_SIZE - 1);
 
 	if (page_is_mapped(info, linear)) {
 		klogc(swarn, "Page %p already exists in directory.\n", linear);
@@ -331,13 +346,10 @@ oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear)
 	page_table[pt].s.frame = frame >> 12;
 
 	/* Make sure the TLB is flushed if required. */
-	paging_tlb_invalidate(true, linear);
+	paging_tlb_invalidate(false, linear);
+	klogc(sok, "Page %p mapped successfully.\n", linear);
 
-	if (pd == 4) {
-		memdump((void *)0x804000, 12 * 4, 4);
-	}
-	
-	return page_is_mapped(info, linear) ? e_ok : e_fail;
+	return e_ok;
 }
 
 oserr paging_unmap(paging_info_t info, uintptr_t linear)
