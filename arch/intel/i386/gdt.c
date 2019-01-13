@@ -47,7 +47,7 @@ struct i386_descriptor_pointer master_gdt_ptr;
 extern void load_gdt(void *restrict ptr);
 static inline void ltr(uint32_t seg)
 {
-	__asm__ __volatile__(
+	__asm__ volatile(
 		  "ltr %0"
 		:
 		: "rm"((uint16_t)seg)

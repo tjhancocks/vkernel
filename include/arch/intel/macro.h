@@ -25,22 +25,22 @@
 
 static inline void nop(void)
 {
-	__asm__ __volatile__("nop");
+	__asm__ volatile("nop");
 }
 
 static inline void hlt(void)
 {
-	__asm__ __volatile__("hlt");
+	__asm__ volatile("hlt");
 }
 
 static inline void cli(void)
 {
-	__asm__ __volatile__("cli");
+	__asm__ volatile("cli");
 }
 
 static inline void sti(void)
 {
-	__asm__ __volatile__("sti");
+	__asm__ volatile("sti");
 }
 
 #endif

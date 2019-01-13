@@ -25,7 +25,7 @@
 
 static inline void cpuid(uint32_t s, uint32_t *d)
 {
-	__asm__ __volatile__(
+	__asm__ volatile(
 		"cpuid" 
 		: "=a"(d[0]), "=b"(d[1]), "=c"(d[2]), "=d"(d[3])
 		: "a"(s), "b"(0), "c"(0), "d"(0)

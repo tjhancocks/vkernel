@@ -26,32 +26,32 @@
 static inline uint32_t get_cr0(void)
 {
 	uint32_t cr0;
-	__asm__ __volatile__("mov %%cr0, %0" : "=r"(cr0));
+	__asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
 	return cr0;
 }
 
 static inline uintptr_t get_cr3(void)
 {
 	uintptr_t cr3;
-	__asm__ __volatile__("mov %%cr3, %0" : "=r"(cr3));
+	__asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
 	return (cr3 & ~(PAGE_SIZE - 1));
 }
 
 static inline uintptr_t get_cr2(void)
 {
 	uintptr_t cr2;
-	__asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+	__asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
 	return cr2;
 }
 
 static inline void set_cr0(uintptr_t cr0)
 {
-	__asm__ __volatile__("mov %0, %%cr0" :: "r"(cr0));
+	__asm__ volatile("mov %0, %%cr0" :: "r"(cr0));
 }
 
 static inline void set_cr3(uintptr_t cr3)
 {
-	__asm__ __volatile__("mov %0, %%cr3" :: "r"(cr3));
+	__asm__ volatile("mov %0, %%cr3" :: "r"(cr3));
 }
 
 

@@ -100,13 +100,14 @@ oserr init_physical_memory(struct multiboot_info *mb)
 		pmm.kernel_mods.end = mod[0].mod_end;
 
 		for (uint32_t i = 1; i < mb->mods_count; ++i) {
-			pmm.kernel_mods.start = mem_align(MIN(
+			pmm.kernel_mods.start = MIN(
 				pmm.kernel_mods.start, mod[0].mod_start
-			), a_down);
-			pmm.kernel_mods.end = mem_align(MAX(
-				pmm.kernel_mods.end, mod[0].mod_end
-			), a_up);
+			);
+			pmm.kernel_mods.end = MAX(pmm.kernel_mods.end, mod[0].mod_end);
 		}
+
+		pmm.kernel_mods.start = mem_align(pmm.kernel_mods.start, a_down);
+		pmm.kernel_mods.end = mem_align(pmm.kernel_mods.end, a_up);
 
 		klogc(
 			sinfo, "Kernel modules are located in physical memory at %p:%p\n",

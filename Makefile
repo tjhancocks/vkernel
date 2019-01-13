@@ -87,7 +87,7 @@ kernel: $(KERNEL.binary)
 
 .PHONY: run-q
 run-q: clean kernel $(KERNEL.ramdisk)
-	$(TOOL.Q) -kernel $(KERNEL.binary) -serial stdio -initrd $(KERNEL.ramdisk)
+	$(TOOL.Q) -kernel $(KERNEL.binary) -serial stdio -initrd $(KERNEL.ramdisk) -vga std
 
 .PHONY: install
 install: clean kernel

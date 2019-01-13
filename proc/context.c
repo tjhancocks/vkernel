@@ -74,7 +74,7 @@ oserr init_context(struct context **ctx)
 		   clone its paging context. We also need to correct the heap base
 		   so that it operates within "kernel" memory. */
 		paging_ctx = kernel_paging_ctx;
-		heap_base = 0x00400000; /* 4MiB */
+		heap_base = 0x01000000; /* 16MiB */
 		heap_limit = 0x10000000; /* 256MiB */
 		klog("Using existing Kernel Page Context: %p\n", kernel_paging_ctx);
 	}

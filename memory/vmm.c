@@ -89,7 +89,8 @@ oserr vmm_acquire_page(uintptr_t linear)
 	if (!vmm_address_valid(linear)) {
 		void *ctx = __vmm_current_context();
 		uintptr_t frame = pmm_acquire_frame();
-		if (paging_map(ctx, frame, linear, f_existing) != e_ok){
+		klogc(sinfo, "vmm_acquire_page(%p) = %p\n", linear, frame);
+		if (paging_map(ctx, frame, linear) != e_ok){
 			klogc(serr, "Failed to acquire page %p\n", linear);
 			return e_fail;
 		}

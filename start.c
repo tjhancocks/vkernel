@@ -50,6 +50,7 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	init_physical_memory(mb);
 	init_arch();
 	init_display();
+	hang_forever();
 
 	/* Setup the kernel context. This will provide access to a heap and paging
 	   functionality in the short term. */
@@ -86,6 +87,14 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	if (boot_message) {
 		kprint(boot_message);
 	}
+
+	void *foo = kalloc(512);
+	void *bar = kalloc(4096);
+	void *baz = kalloc(3600);
+
+	kfree(foo);
+	kfree(baz);
+	kfree(bar);
 
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */

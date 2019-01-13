@@ -74,4 +74,11 @@ oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit);
  */
 void *heap_alloc(struct heap *heap, uint32_t size);
 
+/**
+ Remove an allocation on the heap. Release the memory that is associated with 
+ the allocation, and collects it into "neighbouring blocks" to form a single
+ larger block.
+ */
+void heap_dealloc(struct heap *heap, void *ptr);
+
 #endif

@@ -84,7 +84,7 @@ static int_handler_t _int_handlers[IDT_SIZE] = { NULL };
 
 static inline void lidt(struct i386_descriptor_pointer *ptr)
 {
-	__asm__ __volatile__(
+	__asm__ volatile(
 		  "lidt %0"
 		:
 		: "m"(*ptr)

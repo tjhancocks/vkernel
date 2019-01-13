@@ -55,16 +55,14 @@ bool page_is_mapped(paging_info_t info, uintptr_t linear);
 oserr init_paging(void);
 
 /**
- Paging Map Flags
+ Map the specified physical frame to the specified linear address.
  */
-enum { f_existing = 0x01 };
+oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear);
 
 /**
- Identity map the specified physical frame to the specified linear address.
+ Unmap the physical memory from the specified linear memory address.
  */
-oserr paging_map(
-	paging_info_t info, uintptr_t frame, uintptr_t linear, uint8_t flags
-);
+oserr paging_unmap(paging_info_t info, uintptr_t linear);
 
 /**
  Switch to the specified paging context.

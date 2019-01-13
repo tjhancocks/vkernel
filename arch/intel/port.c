@@ -26,7 +26,7 @@
 
 extern void outb(cpu_port_t port, uint8_t value)
 {
-	__asm__ __volatile__ (
+	__asm__ volatile (
 		  "outb %1, %0"
 		:
 		: "dN"(port), "a"(value)
@@ -36,7 +36,7 @@ extern void outb(cpu_port_t port, uint8_t value)
 extern uint8_t inb(cpu_port_t port)
 {
 	uint8_t result = 0;
-	__asm__ __volatile__ (
+	__asm__ volatile (
 		  "inb %1, %0"
 		: "=a"(result)
 		: "dN"(port)

@@ -119,6 +119,11 @@ static oserr heap_map_page(uintptr_t addr)
 	return e_ok;
 }
 
+static oserr heap_unmap_page(uintptr_t addr)
+{
+	return e_ok;
+}
+
 static oserr heap_map_pages(struct heap_block *block)
 {
 	uintptr_t base = (uintptr_t)block;
@@ -126,6 +131,11 @@ static oserr heap_map_pages(struct heap_block *block)
 	for (uintptr_t addr = base; addr < limit; addr += FRAME_SIZE) {
 		(void)heap_map_page(addr); /* Ignore result - handled above. */
 	}
+	return e_ok;
+}
+
+static oserr heap_unmap_pages(struct heap_block *block)
+{
 	return e_ok;
 }
 
@@ -196,7 +206,45 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 	return NULL;
 }
 
-void heap_free(void *ptr)
+void heap_dealloc(struct heap *heap, void *ptr)
 {
-	/* TODO */
+	klogc(sinfo, "Deallocating %p in heap %p\n", ptr, heap);
+	/* Determine the actual block structure for the provided pointer. */
+	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
+	struct heap_block *block = (uintptr_t)ptr - block_header_size;
+
+	/* Validate that this is the required block. TODO this, check that
+	   the owner is the specified heap and that it has a valid used flag. */
+	if (block->owner != heap || block->state != heap_block_used) {
+		/* Invalid deallocation attempted. Warn and ignore. */
+		klogc(swarn, "Attempted to perform invalid deallocation %p.\n", ptr);
+		return;
+	}
+
+	/* Mark the block as free, and try to collect neighbouring blocks. */
+	block->state = heap_block_free;
+
+	if (block->back && block->back->state == heap_block_free) {
+		klogc(sinfo, "Merging backwards.\n");
+
+		/* Merge with the previous block */
+		block->back->next = block->next;
+		block->back->size += block->size + heap_align(sizeof(*block));
+		if (block->next) block->next->back = block->back;
+
+		/* Become the previous block. */
+		block = block->back;
+	}
+
+	if (block->next && block->next->state == heap_block_free) {
+		klogc(sinfo, "Merging forwards.\n");
+		
+		/* Merge with the next block */
+		block->next = block->next->next;
+		block->size += block->next->size + heap_align(sizeof(*block));
+		if (block->next->next) block->next->next->back = block;
+	}
+
+	/* Check the entire range of the block's memory. Can we unmap any pages? */
+	heap_unmap_pages(block);
 }
