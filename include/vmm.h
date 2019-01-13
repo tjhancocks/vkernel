@@ -50,6 +50,12 @@ oserr vmm_acquire_page(uintptr_t linear);
  Release the specified page, returning the frame back to the phyiscal memory
  manager, and marking the page as not present.
  */
-void vmm_release_page(uintptr_t linear);
+oserr vmm_release_page(uintptr_t linear);
+
+/**
+ Release a series of pages in the range of _first_ to _last_, returning the 
+ frames back to the physical memory manager and marking the page as not present.
+ */
+oserr vmm_release_pages(uintptr_t first, uintptr_t last);
 
 #endif

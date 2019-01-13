@@ -121,7 +121,7 @@ static oserr heap_map_page(uintptr_t addr)
 
 static oserr heap_unmap_page(uintptr_t addr)
 {
-	return e_ok;
+	return vmm_release_page(addr);
 }
 
 static oserr heap_map_pages(struct heap_block *block)
@@ -136,7 +136,79 @@ static oserr heap_map_pages(struct heap_block *block)
 
 static oserr heap_unmap_pages(struct heap_block *block)
 {
+	if (block == NULL) {
+		klogc(swarn, "Attempted to unmap pages for a NULL block.\n");
+		return e_ok;
+	}
+
+	/* If the block is the last one in the heap, then we need to act slightly
+	   differently. */
+	uintptr_t base = block->start;
+	uintptr_t limit = 0;
+	if (block->next == NULL) {
+		/* We need to validate that the upper limit of the heap is page
+		   aligned, otherwise we're in danger of potential corruption. */
+		limit = block->start + block->size;
+		if (limit & (FRAME_SIZE - 1)) {
+			/* The end of the heap is not aligned. */
+			klogc(swarn, "Heap %p was not correctly aligned!\n", block->owner);
+			limit &= ~(FRAME_SIZE - 1);
+		}
+	}
+	else {
+		/* Get the start of the next block, and page align down. */
+		limit = ((uintptr_t)block->next) & ~(FRAME_SIZE - 1);
+	}
+
+	/* We also need to find the actual start. If something else before the block
+	   is also using the page, we must not unmap it. */
+	if (block->start & (FRAME_SIZE - 1)) {
+		/* The block is not aligned to the start of the page. */
+		base = (block->start + FRAME_SIZE) & ~(FRAME_SIZE - 1);
+	}
+
+	/* We're ready to actually unmap the pages now. */
+	if (limit > base) {
+		klogc(sinfo, "Unmapping heap pages %p to %p\n", base, limit);
+		vmm_release_pages(base, limit);
+	}
+
 	return e_ok;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static void *heap_merge_blocks(struct heap_block *b0, struct heap_block *b1)
+{
+	/* We're mergine b1 into b0. This should be relatively straight forward. */
+	if (b1 <= b0) {
+		/* Wrong way around! */
+		klogc(
+			swarn, "Incorrect block order specified for merge. %p into %p\n",
+			b1, b0
+		);
+		return b0;
+	}
+
+	/* Get the details of the block following b1. */
+	struct heap_block *b2 = b1->next;
+
+	if (b2) {
+		/* There is a block following b1. Use it to perform any calculations
+		   required. */
+		b0->size = (uintptr_t)b2 - b0->start;
+		b0->next = b2;
+		b2->back = b0;
+	}
+	else {
+		/* b1 is the terminating block! Slightly more complex, but still 
+		   straight forward. */
+		b0->next = NULL;
+		b0->size += heap_align(sizeof(*b1)) + b1->size;
+	}
+
+	/* Return b0 to the caller as the new "merged" block */
+	return b0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,8 +219,10 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 	   requested allocation. When a block is found, it will be divided into
 	   2 blocks (if large enough), one being a "free" block and the other
 	   being used for the allocation. */
-	if (!heap)
+	if (!heap) {
+		klogc(swarn, "Bad allocation attempt on NULL heap.\n");
 		return NULL;
+	}
 
 	uint32_t req_block_size = block_size(size);
 	klogc(
@@ -171,7 +245,8 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				/* Allocate this block first */
 				ptr->state = heap_block_used;
 				ptr->size = heap_align(size);
-				ptr->next = (void *)(block_start(ptr) + ptr->size);
+				ptr->start = block_start(ptr);
+				ptr->next = (void *)(ptr->start + ptr->size);
 
 				/* Setup the new block */
 				heap_map_page((uintptr_t)ptr->next);
@@ -192,14 +267,16 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				heap->block_count++;
 
 				/* Return the new block */
-				return (void *)block_start(ptr);
+				klogc(sok, "Allocating %p in heap %p\n", ptr->start, heap);
+				return (void *)ptr->start;
 			}
 			else if (ptr->size >= size) {
 				/* We can use the block */
 				ptr->state = heap_block_used;
 				heap->free_blocks--;
 				heap_map_pages(ptr);
-				return (void *)block_start(ptr);
+				klogc(sok, "Allocating %p in heap %p\n", ptr->start, heap);
+				return (void *)ptr->start;
 			}
 
 		}
@@ -212,14 +289,20 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 
 void heap_dealloc(struct heap *heap, void *ptr)
 {
+	if (ptr == NULL) {
+		klogc(swarn, "Attempted to deallocate NULL.\n");
+		return;
+	}
+
 	klogc(sinfo, "Deallocating %p in heap %p\n", ptr, heap);
+
 	/* Determine the actual block structure for the provided pointer. */
 	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
 	struct heap_block *block = (uintptr_t)ptr - block_header_size;
 
 	/* Validate that this is the required block. TODO this, check that
-	   the owner is the specified heap and that it has a valid used flag. */
-	if (block->owner != heap || block->state != heap_block_used) {
+	   the owner is the specified heap and that it has a valid start. */
+	if (block->owner != heap || block->start != (uintptr_t)ptr) {
 		/* Invalid deallocation attempted. Warn and ignore. */
 		klogc(swarn, "Attempted to perform invalid deallocation %p.\n", ptr);
 		return;
@@ -229,8 +312,23 @@ void heap_dealloc(struct heap *heap, void *ptr)
 	block->state = heap_block_free;
 
 	/* TODO: Merging blocks together */
+	struct heap_block *next = block->next;
+	struct heap_block *back = block->back;
+
+	if (back && back->state == heap_block_free) {
+		/* Merge block into back */
+		block = heap_merge_blocks(back, block);
+	}
+
+	if (next && next->state == heap_block_free) {
+		/* Merge next into block */
+		block = heap_merge_blocks(block, next);
+	}
 
 	/* Check the entire range of the block's memory. Can we unmap any pages? */
-	klogc(sinfo, "Unmap the pages used by the heap.\n");
+	klogc(
+		sinfo, "Unmap the pages used by the heap. %p -> %p\n",
+		block, block->start + block->size
+	);
 	heap_unmap_pages(block);
 }

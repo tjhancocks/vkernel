@@ -92,4 +92,10 @@ oserr paging_set_enabled(int flag);
  */
 uintptr_t paging_find_linear(paging_info_t info);
 
+/**
+ Make sure any paging structures and caches are correctly flushed out to the CPU
+ and updated.
+ */
+void paging_flush(void);
+
 #endif

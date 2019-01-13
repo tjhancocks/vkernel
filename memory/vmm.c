@@ -106,7 +106,41 @@ oserr vmm_acquire_page(uintptr_t linear)
 	return e_ok;
 }
 
-void vmm_release_page(uintptr_t linear)
+////////////////////////////////////////////////////////////////////////////////
+
+oserr vmm_release_pages(uintptr_t first, uintptr_t last)
 {
-	/* TODO */
+	/* Make sure the linear address is aligned, or we will end up with errors */
+	first &= ~(PAGE_SIZE - 1);
+	last &= ~(PAGE_SIZE - 1);
+
+	void *ctx = __vmm_current_context();
+	for (uintptr_t addr = first; addr < last; addr += PAGE_SIZE) {
+		if (paging_unmap(ctx, addr) != e_ok) {
+			klogc(serr, "Failed to unmap page %p\n", addr);
+			return e_fail;
+		}
+	}
+
+	/* Make sure any page caches are removed/invalidated */
+	paging_flush();
+
+	return e_ok;
+}
+
+oserr vmm_release_page(uintptr_t linear)
+{
+	/* Make sure the linear address is aligned, or we will end up with errors */
+	linear &= ~(PAGE_SIZE - 1);
+
+	void *ctx = __vmm_current_context();
+	if (paging_unmap(ctx, linear) != e_ok) {
+		klogc(serr, "Failed to unmap page %p\n", linear);
+		return e_fail;
+	}
+
+	/* Make sure any page caches are removed/invalidated */
+	paging_flush();
+
+	return e_ok;
 }

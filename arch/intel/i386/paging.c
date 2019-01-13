@@ -100,6 +100,11 @@ static inline void paging_tlb_invalidate(bool full_shootdown, uintptr_t linear)
 	__asm__ volatile("invlpg %0" :: "m"((void *)linear));
 }
 
+void paging_flush(void)
+{
+	paging_tlb_invalidate(true, 0x0);
+}
+
 bool paging_is_supported(void)
 {
 	/* TODO: Actually confirm that this is the case? */
@@ -202,10 +207,6 @@ oserr paging_linear_to_phys(paging_info_t info, uintptr_t linear, uintptr_t *f)
 
 	/* Check if the page table exists in the page directory. */
 	if (!dir[pd].s.present) {
-		klogc(
-			sinfo, "Page table %d does not exist in page directory %p\n",
-			pd, ctx->page_dir_physical
-		);
 		return e_fail;
 	}
 
@@ -371,7 +372,7 @@ oserr paging_unmap(paging_info_t info, uintptr_t linear)
 	page_table[pt].s.present = 0;
 	pmm_release_frame(frame);
 
-	return e_fail;
+	return e_ok;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
