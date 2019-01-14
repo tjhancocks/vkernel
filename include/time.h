@@ -20,23 +20,11 @@
   SOFTWARE.
  */
 
-#if (__i386__ || __x86_64__)
+#if !defined(TIME_H)
+#define TIME_H
 
-#include <arch/intel/intel.h>
+#include <types.h>
 
-void init_arch(void)
-{
-	#if __i386__
-	init_i386_cpu(&master_cpu);
-	#else
-
-	#endif
-
-	/* Setup the common factors across both i386 and x86_64. */
-	init_vga();
-	init_acpi();
-	init_ps2_controller();
-	init_pit();
-}
+uint64_t uptime_ms(void);
 
 #endif

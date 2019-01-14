@@ -24,13 +24,7 @@
 #include <arch.h>
 #include <print.h>
 
-static void _stub_eip(void *a, uint32_t b)
-{
-	kprint("Started stub thread.\n");
-	for (;;) {
-		hang();
-	}
-}
+extern void __thread_start(void);
 
 oserr init_stack(void *restrict stack, void(*start)(void), uint32_t *sp)
 {
@@ -42,41 +36,43 @@ oserr init_stack(void *restrict stack, void(*start)(void), uint32_t *sp)
 	   to setup an interrupt frame so that the scheduler does not crash when
 	   it returns from the interrupt. */
 
-	uint32_t esp = 0;
 	uint32_t *ebp = stack;
+	uint32_t *esp = ebp - 1;
 
-	/* Setup the starting point. These are parameters to the thread_start()
+	/* Setup the starting point. These are parameters to the__ thread_start()
 	   function. */
-	ebp[esp++] = (uintptr_t)start;
-	ebp[esp++] = 0x00;
+	*esp-- = (uintptr_t)start;
+	*esp-- = 0x00;
 
 	/* Setup the interrupt frame. */
-	ebp[esp++] = KERNEL_DS;					/* interrupt_frame.ss */
-	ebp[esp++] = 0x00;						/* interrupt_frame.user_esp */
-	ebp[esp++] = 0x208;						/* interrupt_frame.eflags */
-	ebp[esp++] = KERNEL_CS;					/* interrupt_frame.cs */
-	ebp[esp++] = (uintptr_t)_stub_eip;		/* interrupt_frame.eip */
-	ebp[esp++] = 0x00;						/* interrupt_frame.errc */
-	ebp[esp++] = 0x00;						/* interrupt_frame.interrupt */
-	ebp[esp++] = 0x00;						/* interrupt_frame.edi */
-	ebp[esp++] = 0x00;						/* interrupt_frame.esi */
-	ebp[esp++] = (uintptr_t)ebp;			/* interrupt_frame.ebp */
-	ebp[esp++] = 0x00;						/* interrupt_frame.esp (ignored) */
-	ebp[esp++] = 0x00;						/* interrupt_frame.ebx */
-	ebp[esp++] = 0x00;						/* interrupt_frame.edx */
-	ebp[esp++] = 0x00;						/* interrupt_frame.ecx */
-	ebp[esp++] = 0x00;						/* interrupt_frame.eax */
-	ebp[esp++] = KERNEL_DS;					/* interrupt_frame.ds */
-	ebp[esp++] = KERNEL_DS;					/* interrupt_frame.es */
-	ebp[esp++] = KERNEL_DS;					/* interrupt_frame.fs */
-	ebp[esp]   = KERNEL_DS;					/* interrupt_frame.gs */
+	*esp-- = KERNEL_DS;					/* interrupt_frame.ss */
+	*esp-- = 0x00;						/* interrupt_frame.user_esp */
+	*esp-- = 0x208;						/* interrupt_frame.eflags */
+	*esp-- = KERNEL_CS;					/* interrupt_frame.cs */
+	*esp-- = (uintptr_t)__thread_start;	/* interrupt_frame.eip */
+	*esp-- = 0x09;						/* interrupt_frame.errc */
+	*esp-- = 0x08;						/* interrupt_frame.interrupt */
+	*esp-- = 0x01;						/* interrupt_frame.eax */
+	*esp-- = 0x02;						/* interrupt_frame.ecx */
+	*esp-- = 0x03;						/* interrupt_frame.edx */
+	*esp-- = 0x04;						/* interrupt_frame.ebx */
+	*esp-- = 0x05;						/* interrupt_frame.esp (ignored) */
+	*esp-- = (uintptr_t)ebp;			/* interrupt_frame.ebp */
+	*esp-- = 0x06;						/* interrupt_frame.esi */
+	*esp-- = 0x07;						/* interrupt_frame.edi */
+	*esp-- = KERNEL_DS;					/* interrupt_frame.ds */
+	*esp-- = KERNEL_DS;					/* interrupt_frame.es */
+	*esp-- = KERNEL_DS;					/* interrupt_frame.fs */
+	*esp   = KERNEL_DS;					/* interrupt_frame.gs */
 
 	/* Make sure that the correct stack pointer is passed back to the caller */
 	if (!sp) {
-		kprintc(swarn, "Stack has been setup, but stack pointer ignored.\n");
+		klogc(swarn, "Stack has been setup, but stack pointer ignored.\n");
 		return e_fail;
 	}
 	*sp = esp;
+	klogc(sinfo, "stack created: ebp=%p, esp=%p, start=%p\n", 
+		ebp, esp, __thread_start);
 	
 	/* report a success */
 	return e_ok;

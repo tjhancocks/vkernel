@@ -31,6 +31,7 @@
 #include <ramdisk.h>
 #include <context.h>
 #include <panic.h>
+#include <thread.h>
 
 __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 {
@@ -87,10 +88,13 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 		kprint(boot_message);
 	}
 
+	/* Setup threading and multitasking */
+	init_threading();
+	
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */
+	kprint("Kernel Main!\n");
 	for (;;) {
-		nop();
-		hlt();
+		hang();
 	}
 }

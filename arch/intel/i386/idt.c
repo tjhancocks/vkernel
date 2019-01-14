@@ -27,6 +27,7 @@
 #include <arch.h>
 #include <print.h>
 #include <panic.h>
+#include <thread.h>
 
 extern void _isr0x00(void);
 extern void _isr0x01(void);
@@ -171,23 +172,44 @@ void interrupt_handler(struct i386_interrupt_frame *frame)
 		else {
 			panic(
 				"Unhandled Exception",
-				"Exception %02X was received, but no handler for it was found.",
-				frame->interrupt
+				"Exception %02X was received, but no handler for it was found. "
+				"\n"
+				" EAX: %08x   ESP: %08x   DS: %08x\n",
+				" EBX: %08x   EBP: %08x   ES: %08x\n",
+				" ECX: %08x   ESI: %08x   FS: %08x\n",
+				" EDX: %08x   EDI: %08x   GS: %08x\n",
+				"UESP: %08x   EIP: %08x   SS: %08x\n",
+				" ERR: %08x   INT: %08x   CS: %08x\n",
+				"EFLG: %08x\n",
+				frame->interrupt,
+				frame->eax, frame->esp, frame->ds,
+				frame->ebx, frame->ebp, frame->es,
+				frame->ecx, frame->esi, frame->fs,
+				frame->edx, frame->edi, frame->gs, 
+				frame->user_esp, frame->eip, frame->ss, 
+				frame->errc, frame->interrupt, frame->cs, 
+				frame->eflags
 			);
 		}
 	}
 	else if (frame->interrupt < 0x30) {
 		/* Check for the appropriate IRQ handler */
 		uint8_t irq = frame->interrupt - 0x20;
+
 		if (_irq_handlers[irq]) {
 			_irq_handlers[irq](irq);
 		}
 
-		/* Acknowledge the slave and master interrupt controllers where 
-		   appropriate. */
+		/* Make sure the slave PIC is acknowledged before checking for a yield,
+		   otherwise we'll miss the ACK. */
 		if (frame->interrupt >= 0x28) {
 			ack_slave_pic();
 		}
+
+		/* Check for a yield. */
+		thread_yield((uintptr_t)frame, frame->ebp, irq);
+
+		/* ACK the master PIC in case the yield failed. */
 		ack_master_pic();
 	}
 	else {
