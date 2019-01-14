@@ -20,23 +20,41 @@
   SOFTWARE.
  */
 
-#if (__i386__ || __x86_64__)
-
 #include <arch/intel/intel.h>
+#include <print.h>
 
-void init_arch(void)
+////////////////////////////////////////////////////////////////////////////////
+
+static struct {
+	uint32_t phase;
+	uint32_t subticks;
+	uint64_t ticks;
+} pit;
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline void pit_set_frequency(uint32_t f)
 {
-	#if __i386__
-	init_i386_cpu(&master_cpu);
-	#else
-
-	#endif
-
-	/* Setup the common factors across both i386 and x86_64. */
-	init_vga();
-	init_acpi();
-	init_ps2_controller();
-	init_pit();
+	int32_t div = 1193180 / f;
+	pit.phase = f;	
+	klogc(sinfo, "Setting PIT Frequency to %uHz\n", f);
+	outb(0x43, 0x36);
+	outb(0x40, div & 0xFF);
+	outb(0x40, (div >> 8) & 0xFF);
 }
 
-#endif
+////////////////////////////////////////////////////////////////////////////////
+
+static void pit_interrupt(uint8_t irq __attribute__((unused)))
+{
+	if (++pit.subticks >= pit.phase) {
+		pit.subticks = 0;
+		++pit.ticks;
+	}
+}
+
+void init_pit(void)
+{
+	pit_set_frequency(1000);
+	set_irq_handler(0x20, pit_interrupt);
+}

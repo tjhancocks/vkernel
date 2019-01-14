@@ -34,5 +34,6 @@
 #include <arch/intel/acpi.h>
 #include <arch/intel/vga.h>
 #include <arch/intel/ps2.h>
+#include <arch/intel/pit.h>
 
 #endif

@@ -85,11 +85,11 @@ struct thread *thread_create(int(*start)(void));
  Yield the execution of the current thread. The current stack information should
  be provided so that it can be save for later.
  */
-void thread_yield(uintptr_t stack_ptr, uintptr_t stack_base);
+void thread_yield(uintptr_t stack_ptr, uintptr_t stack_base, uint8_t irq);
 
 /**
  Switch the current thread stack.
  */
-void switch_thread(void *stack_ptr, void *stack_base, uint8_t irq);
+void switch_thread(void *stack_ptr, void *stack_base);
 
 #endif
