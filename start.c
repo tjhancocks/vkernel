@@ -33,12 +33,6 @@
 #include <panic.h>
 #include <thread.h>
 
-int thread_main(void)
-{
-	kprint("Hello, World!\a\n");
-	return 0;
-}
-
 __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 {
 	/* Attempt to initialise serial port 1, if it is required/available. */
@@ -96,8 +90,7 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 
 	/* Setup threading and multitasking */
 	init_threading();
-	thread_create(thread_main);
-
+	
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */
 	kprint("Kernel Main!\n");

@@ -20,6 +20,8 @@
   SOFTWARE.
  */
 
+#if (__i386__ || __x86_64__)
+
 #include <arch/intel/intel.h>
 #include <print.h>
 
@@ -28,7 +30,7 @@
 static struct {
 	uint32_t phase;
 	uint64_t ticks;
-	uint64_t seconds;
+	uint64_t subticks;
 } pit;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,8 +47,8 @@ static inline void pit_set_frequency(uint32_t f)
 
 static inline void pit_wait(uint32_t ms)
 {
-	uint64_t ticks = pit.ticks + ms;
-	while (pit.ticks < ticks) {
+	uint64_t ticks = pit_total_ms() + ms;
+	while (pit_total_ms() < ticks) {
 		nop();
 	}
 }
@@ -73,8 +75,9 @@ static inline void pit_tone_off(void)
 
 static void pit_interrupt(uint8_t irq __attribute__((unused)))
 {
-	if (++pit.ticks % pit.phase == 0) {
-		++pit.seconds;
+	if (++pit.subticks % pit.phase == 0) {
+		++pit.ticks;
+		pit.subticks = 0;
 	}
 }
 
@@ -93,3 +96,12 @@ void beep(void)
 	pit_tone_off();
 	pit_set_frequency(pit.phase);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+uint64_t pit_total_ms(void)
+{
+	return (pit.ticks * 1000) + ((1000 / pit.phase) * pit.subticks);
+}
+
+#endif

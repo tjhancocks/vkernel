@@ -63,9 +63,15 @@ struct thread
 	void *stack;
 	void *stack_base;
 	uint32_t stack_size;
-	uint64_t state_info;
 	int(*start)(void);
 	struct thread *next;
+	uint64_t start_time;
+	uint64_t run_time;
+	uint64_t idle_time;
+	uint64_t resumed_time;
+	uint64_t suspended_time;
+	uint64_t wake_time;
+	uint64_t suspend_time;
 } __attribute__((packed));
 
 extern struct thread *kernel_main_thread;
@@ -91,5 +97,7 @@ void thread_yield(uintptr_t stack_ptr, uintptr_t stack_base, uint8_t irq);
  Switch the current thread stack.
  */
 void switch_thread(void *stack_ptr, void *stack_base);
+
+void thread_sleep(uint64_t ms);
 
 #endif

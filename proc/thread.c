@@ -26,6 +26,7 @@
 #include <stack.h>
 #include <heap.h>
 #include <arch.h>
+#include <time.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +34,8 @@
 #define KERNEL_TID 			0
 
 #define THREAD_STACK_SIZE	0x10000
+
+#define THREAD_RUN_QUANTA	50
 
 extern const void *kernel_stack;
 
@@ -63,10 +66,24 @@ __attribute__((noreturn)) void __thread_start()
 
 	klogc(sinfo, "Starting thread %d execution now.\n", _current_thread->tid);
 
+	/* Setup time information for the thread. */
+	uint64_t time = uptime_ms();
+	_current_thread->start_time = time;
+	_current_thread->resumed_time = time;
+	_current_thread->suspend_time = time + THREAD_RUN_QUANTA;
+
 	/* Call the threads main function. */
 	int result = _current_thread->start();
-	klogc(sinfo, "Thread %d returned with status code %d.\n", 
-		_current_thread->tid, result);
+	time = uptime_ms();
+
+	/* Calculate the total runtime of the thread. This is how much time it
+	   was actually the active thread. */
+	uint64_t total_run = (
+		(time - _current_thread->resumed_time) + _current_thread->run_time
+	);
+
+	klogc(sinfo, "Thread %d returned with status code %d. It ran for %llums\n", 
+		_current_thread->tid, result, total_run);
 
 	/* Mark the thread as finished so that it can be cleaned up, and then
 	   hang. We can not actually return from here, as there is no where to
@@ -124,6 +141,14 @@ __attribute__((noreturn)) void thread_yield(
 	if (_current_thread->state & thread_no_interrupt)
 		return;
 
+	/* Are we ready to yield? The thread is allowed at least a certain amount
+	   of time. */
+	uint64_t time = uptime_ms();
+	if (_current_thread->state & (thread_sleeping | thread_irq) == 0) {
+		if (_current_thread->suspend_time > time)
+		return;	
+	}
+	
 	/* If the next thread is the current task then abort. Nothing will happen */
 	if (_current_thread->next == _current_thread)
 		return;
@@ -136,6 +161,14 @@ __attribute__((noreturn)) void thread_yield(
 	   abort. */
 	struct thread *thread = _current_thread;
 	while ((thread = thread->next) != _current_thread) {
+		/* Check for a timer condition on the thread. */
+		if (thread->state & thread_sleeping) {
+			if (thread->wake_time <= time) {
+				/* Thread is ready to be resumed. Remove sleep state. */
+				thread->state &= ~thread_sleeping;
+			}
+		}
+
 		if (thread->state == thread_running) {
 			/* The thread is ready to run! */
 			break;
@@ -146,8 +179,27 @@ __attribute__((noreturn)) void thread_yield(
 	   thread. */
 	if (_current_thread == thread)
 		return;
+
+	/* Update the times of the outgoing thread */
+	_current_thread->run_time += time - _current_thread->resumed_time;
+	_current_thread->suspended_time = time;
+
+	/* Update the times of the incoming thread */
 	_current_thread = thread;
+	_current_thread->resumed_time = time;
+	_current_thread->idle_time += time - _current_thread->suspended_time;
 
 	/* Perform the switch. */
 	switch_thread(_current_thread->stack, _current_thread->stack_base);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void thread_sleep(uint64_t ms)
+{
+	_current_thread->wake_time = uptime_ms() + ms;
+	_current_thread->state |= thread_sleeping;
+
+	while (_current_thread->state & thread_sleeping)
+		hang();
 }

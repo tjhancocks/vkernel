@@ -20,11 +20,14 @@
   SOFTWARE.
  */
 
-#if !defined(PIT_H) && (__i386__ || __x86_64__)
-#define PIT_H
 
-void init_pit(void);
+#if (__i386__ || __x86_64__)
 
-uint64_t pit_total_ms(void);
+#include <arch/intel/intel.h>
+
+uint64_t uptime_ms(void)
+{
+	return pit_total_ms();
+}
 
 #endif
