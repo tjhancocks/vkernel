@@ -27,8 +27,8 @@
 
 static struct {
 	uint32_t phase;
-	uint32_t subticks;
 	uint64_t ticks;
+	uint64_t seconds;
 } pit;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,13 +43,38 @@ static inline void pit_set_frequency(uint32_t f)
 	outb(0x40, (div >> 8) & 0xFF);
 }
 
+static inline void pit_wait(uint32_t ms)
+{
+	uint64_t ticks = pit.ticks + ms;
+	while (pit.ticks < ticks) {
+		nop();
+	}
+}
+
+static inline void pit_tone_on(uint32_t f)
+{
+	int32_t div = 1193180 / f;
+	outb(0x43, 0xB6);
+	outb(0x42, div & 0xFF);
+	outb(0x42, (div >> 8) & 0xFF);
+
+	uint8_t t = inb(0x61);
+	if (t != (t|3)) {
+		outb(0x61, t|3);
+	}
+}
+
+static inline void pit_tone_off(void)
+{
+	outb(0x61, inb(0x61) & 0xfc);	
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 static void pit_interrupt(uint8_t irq __attribute__((unused)))
 {
-	if (++pit.subticks >= pit.phase) {
-		pit.subticks = 0;
-		++pit.ticks;
+	if (++pit.ticks % pit.phase == 0) {
+		++pit.seconds;
 	}
 }
 
@@ -57,4 +82,14 @@ void init_pit(void)
 {
 	pit_set_frequency(1000);
 	set_irq_handler(0x20, pit_interrupt);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void beep(void)
+{
+	pit_tone_on(1000);
+	pit_wait(100);
+	pit_tone_off();
+	pit_set_frequency(pit.phase);
 }

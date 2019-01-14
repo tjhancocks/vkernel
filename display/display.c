@@ -23,6 +23,7 @@
 #include <display.h>
 #include <print.h>
 #include <format.h>
+#include <sound.h>
 
 #define TAB_SIZE 4
 
@@ -79,7 +80,7 @@ void display_putc(const char c)
 					main_display->cursor_x = main_display->inset_x;
 					break;
 				case '\a': /* Bell. Should emit a sound. */
-					/* TODO: Produce a beep sound */
+					beep();
 					break;
 				case '\b': /* Backspace. */
 					main_display->putc(

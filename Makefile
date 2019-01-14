@@ -87,7 +87,8 @@ kernel: $(KERNEL.binary)
 
 .PHONY: run-q
 run-q: clean kernel $(KERNEL.ramdisk)
-	$(TOOL.Q) -kernel $(KERNEL.binary) -serial stdio -initrd $(KERNEL.ramdisk) -vga std
+	$(TOOL.Q) -kernel $(KERNEL.binary) -serial stdio -initrd $(KERNEL.ramdisk) \
+		-soundhw pcspk
 
 .PHONY: install
 install: clean kernel

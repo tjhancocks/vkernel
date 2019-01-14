@@ -35,7 +35,7 @@
 
 int thread_main(void)
 {
-	kprint("Hello, World!\n");
+	kprint("Hello, World!\a\n");
 	return 0;
 }
 
