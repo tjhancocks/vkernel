@@ -20,24 +20,9 @@
   SOFTWARE.
  */
 
-#if (__i386__ || __x86_64__)
+#include <bcd.h>
 
-#include <arch/intel/intel.h>
-
-void init_arch(void)
+uint8_t bcd_decode(uint8_t bcd)
 {
-	#if __i386__
-	init_i386_cpu(&master_cpu);
-	#else
-
-	#endif
-
-	/* Setup the common factors across both i386 and x86_64. */
-	init_vga();
-	init_acpi();
-	init_ps2_controller();
-	init_pit();
-	init_cmos();
+	return ((bcd & 0xF0) >> 1) + ((bcd & 0xF0) >> 3) + (bcd & 0xf);
 }
-
-#endif

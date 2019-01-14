@@ -20,24 +20,22 @@
   SOFTWARE.
  */
 
-#if (__i386__ || __x86_64__)
+#if !defined(CMOS_H) && (__i386__ || __x86_64__)
+#define CMOS_H
 
-#include <arch/intel/intel.h>
-
-void init_arch(void)
+enum cmos_reg
 {
-	#if __i386__
-	init_i386_cpu(&master_cpu);
-	#else
+	cmos_rtc_seconds = 0x00,
+	cmos_rtc_minutes = 0x02,
+	cmos_rtc_hours   = 0x04,
+	cmos_rtc_weekday = 0x06,
+	cmos_rtc_day     = 0x07,
+	cmos_rtc_month   = 0x08,
+	cmos_rtc_year    = 0x09,
+	cmos_rtc_sts_a   = 0x0a,
+	cmos_rtc_sts_b   = 0x0b,
+};
 
-	#endif
-
-	/* Setup the common factors across both i386 and x86_64. */
-	init_vga();
-	init_acpi();
-	init_ps2_controller();
-	init_pit();
-	init_cmos();
-}
+void init_cmos(void);
 
 #endif
