@@ -33,6 +33,8 @@ static struct {
 	uint64_t subticks;
 } pit;
 
+extern int64_t current_timestamp;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 static inline void pit_set_frequency(uint32_t f)
@@ -77,6 +79,7 @@ static void pit_interrupt(uint8_t irq __attribute__((unused)))
 {
 	if (++pit.subticks % pit.phase == 0) {
 		++pit.ticks;
+		++current_timestamp;
 		pit.subticks = 0;
 	}
 }

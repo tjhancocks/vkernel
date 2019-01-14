@@ -25,6 +25,23 @@
 
 #include <types.h>
 
+/**
+ The current time in milliseconds since January 1st, 1970 (The UNIX Epoch).
+ */
+int64_t time(void);
+
+/**
+ The current time in milliseconds since the system was booted.
+ */
 uint64_t uptime_ms(void);
+
+/**
+ Returns the number of seconds since January 1st, 1970. Negative values 
+ indicate seconds prior to 1970.
+ */
+int64_t make_timestamp(
+	int32_t year, int32_t month, int32_t day, 
+	int32_t hour, int32_t min, int32_t second
+);
 
 #endif

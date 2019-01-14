@@ -35,5 +35,6 @@
 #include <arch/intel/vga.h>
 #include <arch/intel/ps2.h>
 #include <arch/intel/pit.h>
+#include <arch/intel/cmos.h>
 
 #endif
