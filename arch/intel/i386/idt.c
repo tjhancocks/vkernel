@@ -27,6 +27,7 @@
 #include <arch.h>
 #include <print.h>
 #include <panic.h>
+#include <thread.h>
 
 extern void _isr0x00(void);
 extern void _isr0x01(void);
@@ -194,15 +195,21 @@ void interrupt_handler(struct i386_interrupt_frame *frame)
 	else if (frame->interrupt < 0x30) {
 		/* Check for the appropriate IRQ handler */
 		uint8_t irq = frame->interrupt - 0x20;
+
 		if (_irq_handlers[irq]) {
 			_irq_handlers[irq](irq);
 		}
 
-		/* Acknowledge the slave and master interrupt controllers where 
-		   appropriate. */
+		/* Make sure the slave PIC is acknowledged before checking for a yield,
+		   otherwise we'll miss the ACK. */
 		if (frame->interrupt >= 0x28) {
 			ack_slave_pic();
 		}
+
+		/* Check for a yield. */
+		thread_yield((uintptr_t)frame, frame->ebp, irq);
+
+		/* ACK the master PIC in case the yield failed. */
 		ack_master_pic();
 	}
 	else {
