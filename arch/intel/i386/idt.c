@@ -171,8 +171,23 @@ void interrupt_handler(struct i386_interrupt_frame *frame)
 		else {
 			panic(
 				"Unhandled Exception",
-				"Exception %02X was received, but no handler for it was found.",
-				frame->interrupt
+				"Exception %02X was received, but no handler for it was found. "
+				"\n"
+				" EAX: %08x   ESP: %08x   DS: %08x\n",
+				" EBX: %08x   EBP: %08x   ES: %08x\n",
+				" ECX: %08x   ESI: %08x   FS: %08x\n",
+				" EDX: %08x   EDI: %08x   GS: %08x\n",
+				"UESP: %08x   EIP: %08x   SS: %08x\n",
+				" ERR: %08x   INT: %08x   CS: %08x\n",
+				"EFLG: %08x\n",
+				frame->interrupt,
+				frame->eax, frame->esp, frame->ds,
+				frame->ebx, frame->ebp, frame->es,
+				frame->ecx, frame->esi, frame->fs,
+				frame->edx, frame->edi, frame->gs, 
+				frame->user_esp, frame->eip, frame->ss, 
+				frame->errc, frame->interrupt, frame->cs, 
+				frame->eflags
 			);
 		}
 	}

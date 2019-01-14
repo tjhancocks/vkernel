@@ -79,17 +79,7 @@ oserr init_context(struct context **ctx)
 		klog("Using existing Kernel Page Context: %p\n", kernel_paging_ctx);
 	}
 	else {
-		/*
-		if (clone_kernel_paging_context(&paging_ctx) != e_ok) {
-			klogc(
-				swarn, "*** Failed to clone the kernel paging context. "
-				"Unable to continue initialising context.\n"
-			);
-			return e_fail;
-		}
-		klog("Cloned kernel page context. Switching to it.\n");
-		load_cr3(paging_ctx);
-		*/
+		
 	}
 
 	/* The first job is to construct a header frame for the context. We need 
