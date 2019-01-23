@@ -67,6 +67,7 @@ void write_format_va(
 
 	char *read = fmt;
 	char *write = info->buffer;
+	memset(info->buffer, 0, BUFFER_SIZE);
 
 	uint32_t n = BUFFER_SIZE;
 
@@ -243,6 +244,7 @@ void write_format_va(
 		   is slightly complex task that needs to be carried out in a number
 		   of stages in order to be performed correctly. */
 		char tmp_buffer[INTERNAL_BUFFER_SIZE] = { 0 };
+		memset(tmp_buffer, 0, INTERNAL_BUFFER_SIZE);
 		char *tmp_ptr = tmp_buffer + INTERNAL_BUFFER_SIZE - 2;
 		uint32_t len = 0;
 
@@ -275,24 +277,24 @@ void write_format_va(
 		else if (mods == mod_int) {
 			if (type == type_unsigned) {
 				unsigned int ui = (unsigned int)va_arg(va, unsigned int);
-				len = utoa_base(tmp_ptr, ui, base);
+				len = ulltoa_base(tmp_ptr, (unsigned long long)ui, base);
 				tmp_ptr -= len;
 			}
 			else {
 				signed int si = (signed int)va_arg(va, signed int);
-				len = itoa_base(tmp_ptr, si, base);
+				len = lltoa_base(tmp_ptr, (signed long long)si, base);
 				tmp_ptr -= len;
 			}
 		}
 		else if (mods == mod_long) {
 			if (type == type_unsigned) {
 				unsigned long ul = (unsigned long)va_arg(va, unsigned long);
-				len = ultoa_base(tmp_ptr, ul, base);
+				len = ulltoa_base(tmp_ptr, (unsigned long long)ul, base);
 				tmp_ptr -= len;
 			}
 			else {
 				signed long sl = (signed long)va_arg(va, signed long);
-				len = ltoa_base(tmp_ptr, sl, base);
+				len = lltoa_base(tmp_ptr, (signed long long)sl, base);
 				tmp_ptr -= len;
 			}
 		}

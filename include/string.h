@@ -33,10 +33,6 @@ void *memset(void *restrict dst, uint8_t v, uint32_t sz);
 void *memcpy(void *restrict dst, const void *restrict src, uint32_t n);
 #endif
 
-uint32_t utoa_base(char *ptr, unsigned int v, uint8_t base);
-uint32_t itoa_base(char *ptr, signed int v, uint8_t base);
-uint32_t ultoa_base(char *ptr, unsigned long v, uint8_t base);
-uint32_t ltoa_base(char *ptr, signed long v, uint8_t base);
 uint32_t ulltoa_base(char *ptr, unsigned long long v, uint8_t base);
 uint32_t lltoa_base(char *ptr, signed long long v, uint8_t base);
 uint32_t ftoa(char *ptr, double v, int precision);

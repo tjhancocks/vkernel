@@ -35,7 +35,6 @@ switch_stack:
 		mov 	al, 0x20
 		out 	0x20, al
 	.swap:
-		xchg 	bx, bx
 		mov 	ebp, [esp + 8]
 		mov 	esp, [esp + 4]
 	.finish:
