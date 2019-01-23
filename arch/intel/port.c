@@ -44,4 +44,44 @@ extern uint8_t inb(cpu_port_t port)
 	return result;
 }
 
+extern void outw(cpu_port_t port, uint16_t value)
+{
+	__asm__ volatile (
+		  "outw %1, %0"
+		:
+		: "dN"(port), "a"(value)
+	);
+}
+
+extern uint16_t inw(cpu_port_t port)
+{
+	uint16_t result = 0;
+	__asm__ volatile (
+		  "inw %1, %0"
+		: "=a"(result)
+		: "dN"(port)
+	);
+	return result;
+}
+
+extern void outl(cpu_port_t port, uint32_t value)
+{
+	__asm__ volatile (
+		  "outl %1, %0"
+		:
+		: "dN"(port), "a"(value)
+	);
+}
+
+extern uint32_t inl(cpu_port_t port)
+{
+	uint32_t result = 0;
+	__asm__ volatile (
+		  "inl %1, %0"
+		: "=a"(result)
+		: "dN"(port)
+	);
+	return result;
+}
+
 #endif
