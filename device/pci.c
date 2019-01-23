@@ -23,175 +23,290 @@
 #include <pci.h>
 #include <print.h>
 
-#define PCI_BUS_MAX		8
-#define PCI_SLOT_MAX	32
-#define PCI_FUNC_MAX	8
+////////////////////////////////////////////////////////////////////////////////
 
-enum pci_port { pci_address_port = 0xcf8, pci_data_port = 0xcfc };
-enum pci_field 
+enum pci_field
 {
-	pci_prog_if = 0x09, 
-	pci_subclass = 0x0a, pci_class = 0x0b,
-	pci_cache_line_size = 0x0c, pci_latency_timer = 0x0d,
-	pci_header_type = 0x0e,
-	pci_bist = 0x0f,
-	pci_bar0 = 0x10, pci_bar1 = 0x14, pci_bar2 = 0x18, pci_bar3 = 0x1C,
-	pci_bar4 = 0x20, pci_bar5 = 0x24,
-	pci_secondary_bus = 0x19,
-	pci_interrupt_line = 0x3C
+	pci_field_vendor_id           = 0x00 /* 2 Bytes */,
+	pci_field_device_id           = 0x02 /* 2 Bytes */,
+	pci_field_command             = 0x04 /* 2 Bytes */,
+	pci_field_status              = 0x06 /* 2 Bytes */,
+	pci_field_revision            = 0x08 /* 2 Bytes */,
+	pci_field_prog_if             = 0x09 /* 1 Byte  */,
+	pci_field_subclass            = 0x0A /* 1 Byte  */,
+	pci_field_class               = 0x0B /* 1 Byte  */,
+	pci_field_cache_line_size     = 0x0C /* 1 Byte  */,
+	pci_field_latency_timer       = 0x0D /* 1 Byte  */,
+	pci_field_header_type         = 0x0E /* 1 Byte  */,
+	pci_field_bist                = 0x0F /* 1 Byte  */,
+	pci_field_bar0                = 0x10 /* 4 Bytes */,
+	pci_field_bar1                = 0x14 /* 4 Bytes */,
+	pci_field_bar2                = 0x18 /* 4 Bytes */,
+	pci_field_bar3                = 0x1C /* 4 Bytes */,
+	pci_field_bar4                = 0x20 /* 4 Bytes */,
+	pci_field_bar5                = 0x24 /* 4 Bytes */,
+	pci_field_cardbus             = 0x28 /* 4 Bytes */,
+	pci_field_subsystem_vendor_id = 0x2C /* 2 Bytes */,
+	pci_field_subsystem_id        = 0x2E /* 2 Bytes */,
+	pci_field_expansion_rom_base  = 0x30 /* 1 Byte  */,
+	pci_field_capabilities        = 0x34 /* 1 Byte  */,
+	/* Reserved Range 0x35 - 0x3B */
+	pci_field_interrupt_line      = 0x3C /* 1 Byte  */,
+	pci_field_interrupt_pin       = 0x3D /* 1 Byte  */,
+	pci_field_min_grant           = 0x3E /* 1 Byte  */,
+	pci_field_max_latency         = 0x3F /* 1 Byte  */
 };
-enum pci_property
+
+union pci_header
 {
-	pci_vendor_id = 0x00, pci_device_id = 0x02, 
-	pci_cmd = 0x04, pci_status = 0x06, pci_rev_id = 0x08
-};
-enum pci_type
-{
-	pci_type_device = 0,
-	pci_type_bridge = 1,
-	pci_type_cardbus = 2
-};
-enum pci_value
-{
-	pci_none = 0xffff,
+	uint8_t value;
+	struct {
+		uint8_t type:7;
+		uint8_t mf:1;
+	} s;
 };
 
-typedef void(*pci_func_t)(uint32_t, uint16_t, uint16_t, void *);
+union pci_bist
+{
+	uint8_t value;
+	struct {
+		uint8_t code:4;
+		uint8_t reserved:2;
+		uint8_t start:1;
+		uint8_t capable:1;
+	} s;
+};
+
+union pci_command
+{
+	uint16_t value;
+	struct {
+		uint16_t io_space:1;
+		uint16_t memory_space:1;
+		uint16_t bus_master:1;
+		uint16_t special_cycles:1;
+		uint16_t memory_write:1;
+		uint16_t vga_palette_snoop:1;
+		uint16_t parity_error_response:1;
+		uint16_t reserved0:1;
+		uint16_t serr_enable:1;
+		uint16_t fast_back_to_back:1;
+		uint16_t interrupt_disable:1;
+		uint16_t reserved1:4;
+	} s;
+};
+
+union pci_status
+{
+	uint16_t value;
+	struct {
+		uint16_t reserved0:2;
+		uint16_t interrupt:1;
+		uint16_t capabilities_list:1;
+		uint16_t is_66Mhz:1;
+		uint16_t reserved1:1;
+		uint16_t fast_back_to_back:1;
+		uint16_t master_data_parity_error:1;
+		uint16_t devsel_timing:2;
+		uint16_t signaled_target_abort:1;
+		uint16_t received_target_abort:1;
+		uint16_t received_master_abort:1;
+		uint16_t signaled_system_error:1;
+		uint16_t detected_parity_error:1;
+	} s;
+};
+
+union pci_bar
+{
+	uint32_t value;
+	struct {
+		uint32_t zero:1;
+		uint32_t type:1;
+		uint32_t prefetch:1;
+		uint32_t address:28;
+	} master;
+	struct {
+		uint32_t one:1;
+		uint32_t reserved:1;
+		uint32_t address:30;
+	} io;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline uint8_t pci_extract_bus(uint32_t dev)
+enum pci_class 
 {
-	return (dev >> 16) & 0xFF;
-}
+	pci_class_unclassified = 0x00,
+	pci_class_mass_storage_controller = 0x01,
+	pci_class_network_controller = 0x02,
+	pci_class_display_controller = 0x03,
+	pci_class_multimedia_controller = 0x04,
+	pci_class_memory_controller = 0x05,
+	pci_class_brige_device = 0x06,
+	pci_class_simple_com_controller = 0x07,
+	pci_class_base_peripheral = 0x08,
+	pci_class_input_device_controller = 0x09,
+	pci_class_docking_station = 0x0A,
+	pci_class_processor = 0x0B,
+	pci_class_serial_bus_controller = 0x0C,
+	pci_class_wireless_controller = 0x0D,
+	pci_class_intelligent_controller = 0x0E,
+	pci_class_satellite_com_controller = 0x0F,
+	pci_class_encryption_controller = 0x10,
+	pci_class_signal_processing_controllerr = 0x11,
+	pci_class_processing_accelerator = 0x12,
+	pci_class_non_essential_instrumentation = 0x13,
+	pci_class_coprocessor = 0x40,
+	pci_class_unassigned = 0xFF, 
+};
 
-static inline uint8_t pci_extract_slot(uint32_t dev)
+enum pci_subclass
 {
-	return (dev >> 8) & 0xFF;
-}
+	/* Class: Unclassified */
+	pci_subclass_non_vga_device = 0x00,
+	pci_subclass_vga_device = 0x01,
 
-static inline uint8_t pci_extract_fn(uint32_t dev)
+	/* Class: Mass Storage Controller */
+	pci_subclass_scsi_bus_controller = 0x00,
+	pci_subclass_ide_controller = 0x01,
+	pci_subclass_floppy_disk_controller = 0x02,
+	pci_subclass_ipi_bus_controller = 0x03,
+	pci_subclass_raid_controller = 0x04,
+	pci_subclass_ata_controller = 0x05,
+	pci_subclass_serial_ata = 0x06,
+	pci_subclass_serial_attached_scsi = 0x07,
+	pci_subclass_non_volatile_memory_controller = 0x08,
+	pci_subclass_other = 0x80,
+
+	/* Class: Network Controller */
+	pci_subclass_ethernet_controller = 0x00,
+	pci_subclass_token_ring_controller = 0x01,
+	pci_subclass_fddi_controller = 0x02,
+	pci_subclass_atm_controller = 0x03,
+	pci_subclass_isdn_controller = 0x04,
+	pci_subclass_wordfip_controller = 0x05,
+	pci_subclass_picmg_multi_computing = 0x06,
+	pci_subclass_infiniband_controller = 0x07,
+	pci_subclass_fabric_controller = 0x08,
+
+	/* Class: Display Controller */
+	pci_subclass_vga_controller = 0x00,
+	pci_subclass_xga_controller = 0x01,
+	pci_subclass_3D_controller = 0x02,
+
+	/* Class: Multimedia Controller */
+	pci_subclass_video_controller = 0x00,
+	pci_subclass_audio_controller = 0x01,
+	pci_subclass_telephony_device = 0x02,
+	pci_subclass_audio_device = 0x03,
+
+	/* Class: Memory Controller */
+	pci_subclass_ram_controller = 0x00,
+	pci_subclass_flash_controller = 0x01,
+
+	/* Class: Bridge Device */
+	pci_subclass_host_bridge = 0x00,
+	pci_subclass_isa_bridge = 0x01,
+	pci_subclass_eisa_bridge = 0x02,
+	pci_subclass_mca_bridge = 0x03,
+	pci_subclass_pci_bridge = 0x04,
+	pci_subclass_pcmcia_bridge = 0x05,
+	pci_subclass_nubus_bridge = 0x06,
+	pci_subclass_cardbus_bridge = 0x07,
+	pci_subclass_raceway_bridge = 0x08,
+	pci_subclass_alt_pci_bridge = 0x09,
+	pci_subclass_infiniband_bridge = 0x0A,
+
+	/* Class: Simple Communication Controller */
+	pci_subclass_serial_controller = 0x00,
+	pci_subclass_parallel_controller = 0x01,
+	pci_subclass_multiport_serial_controller = 0x02,
+	pci_subclass_modem = 0x03,
+	pci_subclass_gpib_controller = 0x04,
+	pci_subclass_smartcard = 0x05,
+
+	/* Class: Base System Peripheral */
+	pci_subclass_pic = 0x00,
+	pci_subclass_dma_controller = 0x01,
+	pci_subclass_timer = 0x02,
+	pci_subclass_rtc_controller = 0x03,
+	pci_subclass_pci_hot_plug_controller = 0x04,
+	pci_subclass_sd_host_controller = 0x05,
+	pci_subclass_iommu = 0x06,
+
+	/* Class: Input Device Controller */
+	pci_subclass_keyboard_controller = 0x00,
+	pci_subclass_digitizer_pen = 0x01,
+	pci_subclass_mouse_controller = 0x02,
+	pci_subclass_scanner_controller = 0x03,
+	pci_subclass_gameport_controller = 0x04,
+
+	/* Class: Docking Station */
+	pci_subclass_generic_docking_station = 0x00,
+
+	/* Class: Processor */
+	pci_subclass_i386 = 0x00,
+	pci_subclass_i486 = 0x01,
+	pci_subclass_pentium = 0x02,
+	pci_subclass_alpha = 0x10,
+	pci_subclass_powerpc = 0x20,
+	pci_subclass_mips = 0x30,
+	pci_subclass_coprocessor = 0x40,
+
+	/* Class: Serial Bus Controller */
+	pci_subclass_firewire_controller = 0x00,
+	pci_subclass_access_bus = 0x01,
+	pci_subclass_ssa = 0x02,
+	pci_subclass_usb_controller = 0x03,
+	pci_subclass_fibre_channel = 0x04,
+	pci_subclass_smbus = 0x05,
+	pci_subclass_infiniband = 0x06,
+	pci_subclass_ipmi_interface = 0x07,
+	pci_subclass_sercos_interface = 0x08,
+	pci_subclass_canbus = 0x09,
+
+	/* Class: Wireless Controller */
+	pci_subclass_irda_compatible_controller = 0x00,
+	pci_subclass_consumer_ir_controller = 0x01,
+	pci_subclass_rf_controller = 0x10,
+	pci_subclass_bluetooth_controller = 0x11,
+	pci_subclass_ethernet_controller_802_1_a = 0x20,
+	pci_subclass_ethernet_controller_802_1_b = 0x21,
+
+	/* Class: Intelligent Controller */
+	pci_subclass_l20 = 0x00,
+
+	/* Class: Satellite Communication Controller */ 
+	pci_subclass_satellite_tv_controller = 0x01,
+	pci_subclass_satellite_audio_controller = 0x02,
+	pci_subclass_satellite_voice_controller = 0x03,
+	pci_subclass_satellite_data_controller = 0x04,
+
+	/* Class: Encryption Controller */
+	pci_subclass_network_encryption = 0x00,
+	pci_subclass_entertainment_encryption = 0x10,
+	pci_subclass_other_encryption = 0x80,
+
+	/* Class: Signal Processing Controller */
+	pci_subclass_dpio_modules = 0x00,
+	pci_subclass_performance_counters = 0x01,
+	pci_subclass_communication_sync = 0x02,
+	pci_subclass_signal_processing_management = 0x03,
+};
+
+enum pci_prog_if
 {
-	return dev & 0xFF;
-}
+	/* Subclass: IDE Controller */
+	pci_prog_if_isa_compatible_mode_controller = 0x00,
+	pci_prog_if_pci_native_mode_controller = 0x05,
+	pci_prog_if_isa_compatible_pci_native = 0x0A,
+	pci_prog_if_pci_native_isa_compatible = 0x0F,
+	pci_prog_if_isa_compatible_bus_mastering = 0x80,
+	pci_prog_if_pci_native_bus_mastering = 0x85,
+	pci_prog_if_isa_compatible_pci_native_bus_mastering = 0x8A,
+	pci_prog_if_pci_native_isa_compatible_bus_mastering = 0x8F,
 
-static inline uint32_t pci_device(int32_t bus, uint32_t slot, uint32_t fn)
-{
-	return (uint32_t)((bus << 16) | (slot << 8) | fn);
-}
-
-static inline uint32_t pci_address(uint32_t dev, int32_t field)
-{
-	return (
-		0x80000000 |
-		(pci_extract_bus(dev) << 16) |
-		(pci_extract_slot(dev) << 11) |
-		(pci_extract_fn(dev) << 8) |
-		(field & 0xFC)
-	);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-static uint32_t pci_read(uint32_t dev, int32_t field, int32_t size)
-{
-	outl(pci_address_port, pci_address(dev, field));
-	
-	switch (size) {
-		case 4:  return inl(pci_data_port);
-		case 2:  return inw(pci_data_port);
-		case 1:  return inb(pci_data_port);
-		default: return 0xFFFF;
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-static void pci_scan_bus(pci_func_t, int32_t, int32_t, void*);
-static void pci_scan_hit(pci_func_t, uint32_t, void*);
-static void pci_scan_func(
-	pci_func_t, int32_t, int32_t, int32_t, int32_t, void*
-);
-static void pci_scan_slot(pci_func_t, int32_t, int32_t, int32_t, void*);
-static void pci_scan(pci_func_t, int32_t, void*);
-
-////////////////////////////////////////////////////////////////////////////////
-
-static inline uint16_t pci_find_type(uint32_t dev)
-{
-	return (pci_read(dev, pci_class, 1) << 8) | pci_read(dev, pci_subclass, 1);
-}
-
-static void pci_scan_hit(pci_func_t f, uint32_t dev, void *extra)
-{
-	uint16_t dev_vendor = pci_read(dev, pci_vendor_id, 2);
-	uint16_t dev_id = pci_read(dev, pci_device_id, 2);
-
-	if (f) {
-		f(dev, dev_vendor, dev_id, extra);
-	}
-
-	klogc(
-		sok, "Found PCI Device (vendor %04x, id %04x)\n", 
-		dev_vendor, dev_id
-	);
-}
-
-static void pci_scan_func(
-	pci_func_t f, int32_t type, int32_t bus, int32_t slot, int32_t func, 
-	void *extra
-) {
-	uint32_t dev = pci_device(bus, slot, 0);
-	if (type == -1 || type == pci_find_type(dev)) {
-		pci_scan_hit(f, dev, extra);
-	}
-	if (pci_find_type(dev) == pci_type_bridge) {
-		pci_scan_bus(f, type, pci_read(dev, pci_secondary_bus, 1), extra);
-	}
-}
-
-static void pci_scan_slot(
-	pci_func_t f, int32_t type, int32_t bus, int32_t slot, void *extra
-) {
-	uint32_t dev = pci_device(bus, slot, 0);
-	if (pci_read(dev, pci_vendor_id, 2) == pci_none) {
-		return;
-	}
-
-	pci_scan_func(f, type, bus, slot, 0, extra);
-	if (!pci_read(dev, pci_header_type, 1)) {
-		return;
-	}
-
-	for (uint8_t func = 1; func < PCI_FUNC_MAX; ++func) {
-		uint32_t dev = pci_device(bus, slot, func);
-		if (pci_read(dev, pci_vendor_id, 2) != pci_none) {
-			pci_scan_func(f, type, bus, slot, func, extra);
-		}
-	}
-}
-
-static void pci_scan_bus(pci_func_t f, int32_t type, int32_t bus, void *extra)
-{
-	for (uint8_t slot = 0; slot < PCI_SLOT_MAX; ++slot) {
-		pci_scan_slot(f, type, bus, slot, extra);
-	}
-}
-
-static void pci_scan(pci_func_t f, int32_t type, void *extra)
-{
-	if ((pci_read(0, pci_header_type, 1) & 0x80) == 0) {
-		klogc(sinfo, "Performing restricted PCI scan\n");
-		pci_scan_bus(f, type, 0, extra);
-		return;
-	}
-
-	klogc(sinfo, "Performing full PCI scan\n");
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void init_pci(void)
-{
-	pci_scan(NULL, -1, NULL);
+	/* Subclass: ATA Controller */
+	pci_prog_if_single_dma = 0x20,
+	pci_prog_if_chained_dma = 0x30
 }
