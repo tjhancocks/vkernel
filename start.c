@@ -32,6 +32,7 @@
 #include <context.h>
 #include <panic.h>
 #include <thread.h>
+#include <pci.h>
 
 int kidle(void)
 {
@@ -60,6 +61,10 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	/* Setup the kernel context. This will provide access to a heap and paging
 	   functionality in the short term. */
 	init_context(&kernel_context);
+
+	/* Begin getting internal devices configured and ready for use such as PCI,
+	   hard drives, etc */
+	init_pci();
 
 	/* Check if we have any modules to load in. We need to be sure that we have
 	   got the system ramdisk initialised in order to proceed. */
@@ -99,7 +104,6 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */
-	kprint("Kernel Main!\n");
 	for (;;) {
 		hang();
 	}
