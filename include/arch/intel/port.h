@@ -28,4 +28,10 @@ typedef __kernel_uint16_t cpu_port_t;
 void outb(cpu_port_t port, uint8_t value);
 uint8_t inb(cpu_port_t port);
 
+void outw(cpu_port_t port, uint16_t value);
+uint16_t inwb(cpu_port_t port);
+
+void outl(cpu_port_t port, uint32_t value);
+uint32_t inl(cpu_port_t port);
+
 #endif

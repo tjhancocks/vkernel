@@ -20,68 +20,12 @@
   SOFTWARE.
  */
 
-#if (__i386__ || __x86_64__)
+#if !defined(PCI_H)
+#define PCI_H
 
-#include <arch/intel/intel.h>
+#include <types.h>
+#include <arch.h>
 
-extern void outb(cpu_port_t port, uint8_t value)
-{
-	__asm__ volatile (
-		  "outb %1, %0"
-		:
-		: "dN"(port), "a"(value)
-	);
-}
-
-extern uint8_t inb(cpu_port_t port)
-{
-	uint8_t result = 0;
-	__asm__ volatile (
-		  "inb %1, %0"
-		: "=a"(result)
-		: "dN"(port)
-	);
-	return result;
-}
-
-extern void outw(cpu_port_t port, uint16_t value)
-{
-	__asm__ volatile (
-		  "outw %1, %0"
-		:
-		: "dN"(port), "a"(value)
-	);
-}
-
-extern uint16_t inw(cpu_port_t port)
-{
-	uint16_t result = 0;
-	__asm__ volatile (
-		  "inw %1, %0"
-		: "=a"(result)
-		: "dN"(port)
-	);
-	return result;
-}
-
-extern void outl(cpu_port_t port, uint32_t value)
-{
-	__asm__ volatile (
-		  "outl %1, %0"
-		:
-		: "dN"(port), "a"(value)
-	);
-}
-
-extern uint32_t inl(cpu_port_t port)
-{
-	uint32_t result = 0;
-	__asm__ volatile (
-		  "inl %1, %0"
-		: "=a"(result)
-		: "dN"(port)
-	);
-	return result;
-}
+void init_pci(void);
 
 #endif
