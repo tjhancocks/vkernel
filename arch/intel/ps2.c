@@ -25,6 +25,7 @@
 #include <arch/intel/intel.h>
 #include <print.h>
 #include <panic.h>
+#include <keyboard.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -132,6 +133,7 @@ static void ps2_kbd_interrupt_handler(void)
 
 	/* TODO: Correctly handle the keyboard input. This should be directed to a
 	   more generic keyboard driver that can handle PS/2 or USB keyboards. */
+	keyboard_record_scancode(scan_code);
 }
 
 static void ps2_mouse_interrupt_handler(void)
