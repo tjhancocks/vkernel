@@ -80,7 +80,6 @@ static inline void idmap(paging_info_t info, enum frame_purpose purpose)
 {
 	uintptr_t start, end;
 	pmm_frame_range(purpose, &start, &end);
-	klogc(sinfo, "idmap(%p -> %p)\n", start, end);
 	for (uintptr_t addr = start; addr < end; addr += PAGE_SIZE) {
 		paging_map(info, addr, addr);
 	}
@@ -140,7 +139,6 @@ oserr paging_set_context(paging_info_t info)
 
 	/* Set the CR3 register to the page directory for the given context */
 	set_cr3(ctx->page_dir_physical);
-	klogc(sok, "CR3 set to %p\n", get_cr3());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,8 +227,6 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 	struct paging_context *ctx = (void *)info;
 	union page_table *dir = (void *)paging_address_for_directory(info);
 
-	klogc(sinfo, "Using page directory %p to create table\n", dir);
-
 	if (dir[table].s.present) {
 		/* The page is already present. This operation would be potentially
 		   fatal to the operation of the system. */
@@ -258,14 +254,8 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 	dir[table].s.write = 1;
 	dir[table].s.frame = table_frame >> 12;
 
-	klogc(
-		sok, "Setup entry %d using frame %p, in page directory: %08X (%p)\n", 
-		table, table_frame, dir[table].i, dir
-	);
-
 	/* Ensure the required page tables exist. */
 	if (!dir[PAGE_TABLE_TABLE].s.present) {
-		klogc(swarn, "Page table for tracking page tables needs creating.\n");
 		/* We do not yet have the page table for tracking page tables. We must
 		   get it set up in order to proceed. */
 		if (paging_create_table(info, PAGE_TABLE_TABLE) != e_ok) {
@@ -285,13 +275,6 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 		info, PAGE_TABLE_TABLE
 	);
 
-	klogc(sinfo, "Page table %d has physical address %p\n", table, table_frame);
-	klogc(
-		sinfo, "Page table %d has linear address %p\n", 
-		table, (PAGE_TABLE_TABLE << 22) + (table << 12)
-	);
-	klogc(sinfo, "Recording to page_table: %p\n", page_table);
-
 	page_table[table].s.present = 1;
 	page_table[table].s.write = 1;
 	page_table[table].s.frame = table_frame >> 12;
@@ -299,7 +282,6 @@ static oserr paging_create_table(paging_info_t info, uint32_t table)
 	paging_tlb_invalidate(true, (uintptr_t)page_table);
 
 	/* At this point we know everything succeed correctly. */
-	klogc(sok, "Created page table %d successfully.\n", table);
 	return e_ok;
 }
 
@@ -322,8 +304,6 @@ oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear)
 		return e_ok;
 	}
 
-	klogc(sinfo, "Mapping page %p to frame %p\n", linear, frame);
-
 	uint32_t pd, pt;
 	paging_translate_linear(linear, &pd, &pt);
 
@@ -339,7 +319,6 @@ oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear)
 
 	/* Locate the page table in memory so we can update it */
 	union page *page_table = (void *)paging_address_for_table(info, pd);
-	klogc(sinfo, "Mapping uses page table at %p\n", page_table);
 
 	/* Write in the new entry. */
 	page_table[pt].s.present = 1;
@@ -348,8 +327,6 @@ oserr paging_map(paging_info_t info, uintptr_t frame, uintptr_t linear)
 
 	/* Make sure the TLB is flushed if required. */
 	paging_tlb_invalidate(false, linear);
-	klogc(sok, "Page %p mapped successfully.\n", linear);
-
 	return e_ok;
 }
 
@@ -424,18 +401,6 @@ oserr init_paging(void)
 	__kernel_paging_ctx.page_dir_physical = pmm_acquire_frame();
 	__kernel_paging_ctx.page_dir = (void *)(
 		(PAGE_TABLE_TABLE << 22) | (PAGE_TABLE_TABLE << 12)
-	);
-
-	klogc(sinfo, "Kernel Paging Context is %p\n", kernel_paging_ctx);
-	klogc(sinfo, "Page dir is located at %p\n", __kernel_paging_ctx.page_dir);
-	klogc(
-		sinfo, "Page dir frame is located at %p\n", 
-		__kernel_paging_ctx.page_dir_physical
-	);
-
-	klogc(
-		sinfo, "Page dir reported as %p\n", 
-		paging_address_for_directory(kernel_paging_ctx)
 	);
 
 	/* Create the initial page tables */

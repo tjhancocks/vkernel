@@ -34,7 +34,6 @@
 #include <thread.h>
 #include <pci.h>
 #include <keyboard.h>
-#include <read.h>
 
 int kidle(void)
 {
@@ -110,11 +109,6 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */
 	for (;;) {
-		char buffer[1024] = { 0 };
-		kprint("$ ");
-		if (readline(&buffer, 1024) > 0) {
-
-		}
-		kprint("\n");
+		hang();
 	}
 }

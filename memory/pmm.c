@@ -76,24 +76,15 @@ oserr init_physical_memory(struct multiboot_info *mb)
 	   information. This may be incorrect on some systems and may need to be
 	   accounted for in the future. */
 	pmm.frames.count = (mb->mem_lower + mb->mem_upper) / (FRAME_SIZE >> 10);
-	klogc(
-		sinfo, "The system has %d frames of physical memory.\n", 
-		pmm.frames.count
-	);
 
 	/* Record information regarding the kernel code */
 	pmm.kernel_code.start = mem_align((uintptr_t)&kernel_start, a_down);
 	pmm.kernel_code.end = mem_align((uintptr_t)&kernel_end, a_up);
-	klogc(
-		sinfo, "The kernel is located in physical memory at %p:%p\n",
-		pmm.kernel_code.start, pmm.kernel_code.end
-	);
 
 	/* Record information regarding any modules being loaded. We're not
 	   concerned with what individual modules are, but rather the range of
 	   memory they are occupying. */
 	if ((mb->flags & MULTIBOOT_INFO_MODS) && (mb->mods_count > 0)) {
-		klogc(sinfo, "Kernel modules were provided via multiboot.\n");
 		
 		multiboot_module_t *mod = (void *)mb->mods_addr;
 		pmm.kernel_mods.start = mod[0].mod_start;
@@ -109,10 +100,6 @@ oserr init_physical_memory(struct multiboot_info *mb)
 		pmm.kernel_mods.start = mem_align(pmm.kernel_mods.start, a_down);
 		pmm.kernel_mods.end = mem_align(pmm.kernel_mods.end, a_up);
 
-		klogc(
-			sinfo, "Kernel modules are located in physical memory at %p:%p\n",
-			pmm.kernel_mods.start, pmm.kernel_mods.end
-		);
 	}
 	else {
 		/* No kernel modules have been loaded. This must be accounted for
@@ -142,34 +129,21 @@ oserr init_physical_memory(struct multiboot_info *mb)
 	pmm.frames.stack.frames = (
 		(pmm.frames.count / per_frame) + (pmm.frames.count % per_frame ? 1 : 0)
 	);
-	klogc(
-		sinfo, "Available frame stack will require %d frames.\n", 
-		pmm.frames.stack.frames
-	);
 	pmm.frames.stack.base = (uintptr_t *)pmm.kernel_mods.end;
 	pmm.frames.stack.ptr = pmm.frames.stack.base;
 	pmm.frames.stack.end = (uintptr_t)pmm.frames.stack.base + (
 		pmm.frames.stack.frames * FRAME_SIZE
-	);
-	klogc(
-		sinfo, "Available frame stack is located at %p\n", 
-		pmm.frames.stack.base
 	);
 
 	/* At this point the ranges of physical memory are known. However we 
 	   still need to produce a stack of available frames. This stack also
 	   needs to account for any memory "holes" that are present. These holes
 	   are provided to us via the multiboot information in a memory map. */
-	klogc(
-		sinfo, 
-		"Parsing memory map to assist in determining all available frames.\n"
-	);
 	struct multiboot_mmap_entry *mmap = (void *)mb->mmap_addr;
 	uint32_t mmap_size = mb->mmap_length;
 	uint32_t mmap_count = mmap_size / sizeof(*mmap);
 
 	uintptr_t first_avail = pmm.frames.stack.end;
-	klogc(sinfo, "First available frame is %p\n", first_avail);
 	for (uint32_t i = 0; i < mmap_count; ++i) {
 		/* Determine the start of the region and the end of it. */
 		uintptr_t start = (uintptr_t)mmap[i].addr;
@@ -177,13 +151,11 @@ oserr init_physical_memory(struct multiboot_info *mb)
 		
 		/* If the region is not usable then skip it. */
 		if (mmap[i].type != MULTIBOOT_MEMORY_AVAILABLE) {
-			klogc(sinfo, "mmap[%d] %p:%p is not usable.\n", i, start, end);
 			continue;
 		}
 
 		/* Is the first free frame after the of the region? If so then skip. */
 		if (first_avail >= end) {
-			klogc(sinfo, "mmap[%d] %p:%p is already used.\n", i, start, end);
 			continue;
 		}
 
@@ -191,7 +163,6 @@ oserr init_physical_memory(struct multiboot_info *mb)
 		start = (first_avail < start) ? start : first_avail;
 
 		/* Record the available frames in the stack */
-		klogc(sinfo, "mmap[%d] %p:%p is available for use.\n", i, start, end);
 		for (; start < end; start += FRAME_SIZE)
 			pmm_record_frame(start);
 	}
@@ -200,25 +171,19 @@ oserr init_physical_memory(struct multiboot_info *mb)
 	uintptr_t expected = pmm.frames.stack.end;
 	uintptr_t allocated = pmm_acquire_frame();
 	if (expected == allocated) {
-		klogc(sok, "Expected frame %p and got %p\n", expected, allocated);
 		if (pmm_release_frame(allocated) == e_ok) {
-			klogc(sok, "Frame released as expected.\n");
 		}
 		else {
-			klogc(serr, "Did not release frame as expected.");
 		}
 	}
 	else {
-		klogc(serr, "Expected frame %p but got %p\n", expected, allocated);
 	}
 
 	/* Make a note of how much memory has been "wired" into it. */
 	uintptr_t s = 0, e = 0;
 	pmm_frame_range(frame_kernel_wired, &s, &e);
-	klogc(sinfo, "Total wired kernel memory is %p:%p\n", s, e);
 
 	/* Reaching this point is a good indication of a successful setup */
-	klogc(sok, "Physical Memory Manager initialised successfully.\n");
 	return e_ok;
 }
 

@@ -47,7 +47,6 @@ static inline uint32_t block_size(uint32_t alloc_size)
 
 oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
 {
-	klogc(sinfo, "Constructing heap (base %p, limit %p)\n", base, limit);
 
 	/* Validate everything that has been provided. A heap must be of a certain
 	   size, aligned to a page boundary and above a certain point in memory. */
@@ -70,14 +69,12 @@ oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
 	/* The heap will require the first page in itself to be allocated. This is
 	   so the initial data structures can be constructed (the heap manages its
 	   own memory). */
-	klogc(sinfo, "Acquiring page for heap: %p\n", base);
 	if (vmm_acquire_page(base) != e_ok) {
 		klogc(serr, "Failed to acquire initial page for heap.\n");
 		return e_fail;
 	}
 
 	/* Get a reference to the heap and setup the initial information. */
-	klogc(sinfo, "Casting base into heap structure\n");
 	*heap = (void *)base;
 	(*heap)->base = base;
 	(*heap)->limit = limit;
@@ -86,8 +83,6 @@ oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
 	(*heap)->first = (void *)heap_align(base + sizeof(**heap));
 	(*heap)->last = (*heap)->first;
 
-	klogc(sinfo, "Heap structure established at %p\n", *heap);
-	klogc(sinfo, "Heap first block = %p\n", (*heap)->first);
 
 	/* Setup the first block. */
 	(*heap)->first->state = heap_block_free;
@@ -96,10 +91,6 @@ oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
 	(*heap)->first->next = NULL;
 	(*heap)->first->back = NULL;
 
-	klogc(
-		sinfo, "Heap first block %p is %u bytes in size. First alloc: %p\n", 
-		(*heap)->first, (*heap)->first->size, block_start((*heap)->first)
-	);
 
 	/* Heap setup and constructed successfully. */
 	return e_ok;
@@ -169,7 +160,6 @@ static oserr heap_unmap_pages(struct heap_block *block)
 
 	/* We're ready to actually unmap the pages now. */
 	if (limit > base) {
-		klogc(sinfo, "Unmapping heap pages %p to %p\n", base, limit);
 		vmm_release_pages(base, limit);
 	}
 
@@ -225,11 +215,6 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 	}
 
 	uint32_t req_block_size = block_size(size);
-	klogc(
-		sinfo, 
-		"Using heap %p. Requested size is %u bytes. Require %u bytes minimum\n",
-		heap, size, req_block_size
-	);
 
 	struct heap_block *ptr = heap->first;
 	do {
@@ -267,7 +252,6 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				heap->block_count++;
 
 				/* Return the new block */
-				klogc(sok, "Allocating %p in heap %p\n", ptr->start, heap);
 				return (void *)ptr->start;
 			}
 			else if (ptr->size >= size) {
@@ -275,7 +259,6 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				ptr->state = heap_block_used;
 				heap->free_blocks--;
 				heap_map_pages(ptr);
-				klogc(sok, "Allocating %p in heap %p\n", ptr->start, heap);
 				return (void *)ptr->start;
 			}
 
@@ -294,7 +277,6 @@ void heap_dealloc(struct heap *heap, void *ptr)
 		return;
 	}
 
-	klogc(sinfo, "Deallocating %p in heap %p\n", ptr, heap);
 
 	/* Determine the actual block structure for the provided pointer. */
 	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
@@ -326,9 +308,5 @@ void heap_dealloc(struct heap *heap, void *ptr)
 	}
 
 	/* Check the entire range of the block's memory. Can we unmap any pages? */
-	klogc(
-		sinfo, "Unmap the pages used by the heap. %p -> %p\n",
-		block, block->start + block->size
-	);
 	heap_unmap_pages(block);
 }
