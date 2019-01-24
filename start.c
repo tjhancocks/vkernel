@@ -34,6 +34,7 @@
 #include <thread.h>
 #include <pci.h>
 #include <keyboard.h>
+#include <shell.h>
 
 int kidle(void)
 {
@@ -105,6 +106,9 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	/* Setup threading and multitasking */
 	init_threading();
 	thread_create(kidle);
+
+	/* Start the kernel shell if required (currently always required) */
+	launch_kernel_shell();
 	
 	/* Enter an infinite loop to ensure we don't fall out of the kernel. We
 	   should also perform some maintainence tasks periodically in here. */
