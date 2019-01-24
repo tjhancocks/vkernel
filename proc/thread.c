@@ -27,6 +27,7 @@
 #include <heap.h>
 #include <arch.h>
 #include <time.h>
+#include <keyboard.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -169,6 +170,13 @@ __attribute__((noreturn)) void thread_yield(
 			}
 		}
 
+		/* Check for a keyboard condition on the thread. */
+		if (thread->state & thread_keyboard) {
+			if (keyboard_has_items()) {
+				thread->state &= ~thread_keyboard;
+			}
+		}
+
 		if (thread->state == thread_running) {
 			/* The thread is ready to run! */
 			break;
@@ -201,5 +209,12 @@ void thread_sleep(uint64_t ms)
 	_current_thread->state |= thread_sleeping;
 
 	while (_current_thread->state & thread_sleeping)
+		hang();
+}
+
+void thread_wait_keyboard(void)
+{
+	_current_thread->state |= thread_keyboard;
+	while (_current_thread->state & thread_keyboard)
 		hang();
 }
