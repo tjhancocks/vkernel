@@ -33,6 +33,7 @@
 #include <panic.h>
 #include <thread.h>
 #include <pci.h>
+#include <keyboard.h>
 
 int kidle(void)
 {
@@ -97,6 +98,9 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	if (boot_message) {
 		kprint(boot_message);
 	}
+
+	/* Setup I/O devices */
+	init_keyboard();
 
 	/* Setup threading and multitasking */
 	init_threading();
