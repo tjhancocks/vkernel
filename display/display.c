@@ -24,6 +24,7 @@
 #include <print.h>
 #include <format.h>
 #include <sound.h>
+#include <string.h>
 
 #define TAB_SIZE 4
 
@@ -146,5 +147,35 @@ void display_inset(uint32_t x, uint32_t y)
 	if (main_display) {
 		main_display->inset_x = main_display->cursor_x = x;
 		main_display->inset_y = main_display->cursor_y = y;
+	}
+}
+
+void display_get_cursor(uint32_t *x, uint32_t *y)
+{
+	if (main_display) {
+		*x = main_display->cursor_x;
+		*y = main_display->cursor_y;
+	}
+}
+
+void display_clear_text_range(uint32_t start_x, uint32_t start_y, uint32_t len)
+{
+	if (main_display) {
+		main_display->cursor_x = start_x;
+		main_display->cursor_y = start_y;
+
+		char clear_str[len + 1];
+		memset(clear_str, ' ', len);
+		clear_str[len] = '\0';
+		display_puts(clear_str);
+
+		main_display->cursor_x = start_x;
+		main_display->cursor_y = start_y;
+
+		if (main_display->set_cursor) {
+			main_display->set_cursor(
+				main_display->cursor_x, main_display->cursor_y
+			);
+		}
 	}
 }

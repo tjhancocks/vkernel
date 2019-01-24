@@ -49,6 +49,9 @@ enum thread_state
 
 	/* Thread is suspended, but waiting for an IRQ to fire. */
 	thread_irq = (1 << 5),
+
+	/* Thread is suspended, but waiting for keyboard input */
+	thread_keyboard = (1 << 6),
 };
 
 /**
@@ -99,5 +102,6 @@ void thread_yield(uintptr_t stack_ptr, uintptr_t stack_base, uint8_t irq);
 void switch_thread(void *stack_ptr, void *stack_base);
 
 void thread_sleep(uint64_t ms);
+void thread_wait_keyboard(void);
 
 #endif

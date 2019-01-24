@@ -162,6 +162,7 @@ void init_display(void);
  Clear all content from the main display.
  */
 void display_clear(void);
+void display_clear_text_range(uint32_t start_x, uint32_t start_y, uint32_t len);
 
 /**
  Put a character to the main display (text mode displays only).
@@ -188,5 +189,10 @@ void display_set_attribute(uint32_t attribute);
  Set the inset values of the screen.
  */
 void display_inset(uint32_t x, uint32_t y);
+
+/**
+ Get the current X,Y coordinates of the cursor.
+ */
+void display_get_cursor(uint32_t *x, uint32_t *y);
 
 #endif
