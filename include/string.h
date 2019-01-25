@@ -37,4 +37,6 @@ uint32_t ulltoa_base(char *ptr, unsigned long long v, uint8_t base);
 uint32_t lltoa_base(char *ptr, signed long long v, uint8_t base);
 uint32_t ftoa(char *ptr, double v, int precision);
 
+int atoi(const char *restrict str);
+
 #endif

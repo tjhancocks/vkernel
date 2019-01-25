@@ -138,3 +138,19 @@ uint32_t ftoa(char *ptr, double v, int precision)
 	/* Finish up */
 	return len;
 }
+
+int atoi(const char *restrict str)
+{
+	int result = 0;
+	while (*str) {
+		if (*str >= '0' && *str <= '9') {
+			result *= 10;
+			result += (*str - '0');
+		}
+		else {
+			return 0;
+		}
+		++str;
+	}
+	return result;
+}
