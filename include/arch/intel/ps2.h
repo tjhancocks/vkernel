@@ -44,6 +44,7 @@ enum ps2_cmd
 {
 	/* Returns the controller configuration byte as a response. */
 	ps2_cmd_read_cfg = 0x20,
+	ps2_cmd_write_cfg = 0x60,
 
 	/* Test the PS/2 controller. Returns either 0x55 (PASS) or 0xFC (FAIL). */
 	ps2_cmd_test = 0xAA,
@@ -63,6 +64,12 @@ enum ps2_cmd
 	/* Test the first PS/2 port. Returns 0x00 if test passed, or 0x01 to 0x04
 	   if the test failed. */
 	ps2_cmd_test_p1 = 0x0AB,
+
+	/* Send next command to Port 2. */
+	ps2_cmd_send_to_p2 = 0xD4,
+
+	/* Reset */
+	ps2_cmd_device_reset = 0xFF,
 };
 
 enum ps2_cmd_response

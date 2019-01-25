@@ -53,6 +53,11 @@ static inline void __ps2_read_wait(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static inline void __ps2_cmd(uint8_t cmd)
+{
+	outb(ps2_cmd_port, cmd);
+}
+
 static inline void __ps2_write(uint8_t data)
 {
 	__ps2_write_wait();
@@ -66,44 +71,6 @@ static inline uint8_t __ps2_read(void)
 	return data;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-static void __ps2_do_cmd(uint8_t cmd, uint8_t *resp)
-{
-	for (uint8_t attempt = 0; attempt < 3; ++attempt) {
-		/* Send the command */
-		outb(ps2_cmd_port, cmd);
-
-		/* If we do not need a response then simply break out and finish. */
-		if (!resp) 
-			break;
-
-		/* Wait for the response and then read it. Check if we need to handle
-		   the response. */
-		if ((*resp = __ps2_read()) != ps2_cmd_resend)
-			break;
-
-	}
-}
-
-static inline void ps2_send_cmd(uint8_t cmd)
-{
-	__ps2_do_cmd(cmd, NULL);
-}
-
-static inline uint8_t ps2_send_query(uint8_t cmd)
-{
-	__ps2_do_cmd(cmd, &ps2.response);
-	return ps2.response;
-}
-
-static inline void ps2_kbd_scan(uint8_t *scan_code)
-{
-	ps2.response = __ps2_read();
-	if (scan_code)
-		*scan_code = ps2.response;
-}
-
 static inline void ps2_flush(void)
 {
 	while (inb(ps2_status_port) & ps2_status_output) {
@@ -113,14 +80,84 @@ static inline void ps2_flush(void)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static inline uint8_t ps2_port_test(uint8_t port)
+static void __ps2_do_cmd(
+	uint8_t port, uint8_t cmd, bool with_data, uint8_t data, uint8_t *resp
+) {
+	for (uint8_t attempt = 0; attempt < 3; ++attempt) {
+		/* Is this for the second port? */
+		if (port == 2)
+			__ps2_cmd(ps2_cmd_send_to_p2);
+
+		/* Send the command */
+		__ps2_cmd(cmd);
+
+		/* If there is data to send then send it. */
+		if (with_data)
+			__ps2_write(data);
+
+		/* If we do not need a response then simply break out and finish. */
+		if (!resp) 
+			break;
+
+		/* Wait for the response and then read it. Check if we need to handle
+		   the response. */
+		if ((*resp = __ps2_read()) != ps2_cmd_resend)
+			break;
+	}
+	ps2_flush();
+}
+
+static inline void ps2_send_cmd_to_port(uint8_t port, uint8_t cmd)
+{
+	__ps2_do_cmd(port, cmd, false, 0, NULL);
+}
+
+static inline uint8_t ps2_send_query_to_port(uint8_t port, uint8_t cmd)
+{
+	__ps2_do_cmd(port, cmd, false, 0, &ps2.response);
+	return ps2.response;
+}
+
+static inline uint8_t ps2_send_cmd_data_to_port(
+	uint8_t port, uint8_t cmd, uint8_t data
+) {
+	__ps2_do_cmd(port, cmd, true, data, NULL);
+}
+
+static inline void ps2_send_cmd(uint8_t cmd)
+{
+	ps2_send_cmd_to_port(0, cmd);
+}
+
+static inline uint8_t ps2_send_query(uint8_t cmd)
+{
+	return ps2_send_query_to_port(0, cmd);
+}
+
+static inline void ps2_kbd_scan(uint8_t *scan_code)
+{
+	ps2.response = __ps2_read();
+	if (scan_code)
+		*scan_code = ps2.response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline void ps2_update_cfg(void)
+{
+	ps2_send_cmd_data_to_port(0, ps2_cmd_write_cfg, ps2.cfg);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static inline bool ps2_port_test(uint8_t port)
 {
 	if (port < 1 || port > 2)
-		return 0;
+		return false;
 
 	switch (ps2_send_query(port == 1 ? ps2_cmd_test_p1 : ps2_cmd_test_p2)) {
-		case ps2_cmd_port_test_pass: return 1;
-		default: return 0;
+		case ps2_cmd_port_test_pass: return true;
+		default: return false;
 	}
 }
 
@@ -159,6 +196,28 @@ static void ps2_irq_handler(uint8_t irq)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+static bool ps2_enable_port(uint8_t port)
+{
+	if (port < 1 || port > 2)
+		return false;
+
+	klog("Enabling PS/2 Port %d\n", port);
+
+	/* todo: determine the purpose of the port to install the correct
+	   handler. */
+	set_irq_handler(port == 1 ? 0x21 : 0x2C, ps2_irq_handler);
+
+	/* enable the appropriate interrupt from the PS/2 controller */
+	ps2.cfg |= (port == 1 ? 0x01 : 0x02);
+	ps2_update_cfg();
+
+	/* enable the port and flush any information */
+	ps2_send_cmd(port == 1 ? ps2_cmd_enable_p1 : ps2_cmd_enable_p2);
+	ps2_flush();
+
+	return true;
+}
 
 void init_ps2_controller(void)
 {
@@ -206,17 +265,12 @@ void init_ps2_controller(void)
 
 	/* Install the appropriate IRQ's to handle the PS/2 interrupts and enable 
 	   the PS/2 ports that are correctly functionality/present. */
-	if (ps2.port1) {
-		klog("Enabling PS/2 Port 1\n");
-		set_irq_handler(0x21, ps2_irq_handler);
-		ps2_send_cmd(ps2_cmd_enable_p1);
-	}
+	if (ps2.port1)
+		ps2_enable_port(1);
 
-	if (ps2.port2) {
-		klog("Enabling PS/2 Port 2\n");
-		set_irq_handler(0x2C, ps2_irq_handler);
-		ps2_send_cmd(ps2_cmd_enable_p2);
-	}
+	/* Leave the second port disabled for now */
+	if (ps2.port2 && false)
+		ps2_enable_port(2);
 
 	/* Finished initialising the PS/2 controller. */
 }
