@@ -27,7 +27,7 @@
 #include <alloc.h>
 #include <ramdisk.h>
 #include <display.h>
-#include <info.h>
+#include <syscall.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -125,7 +125,20 @@ static void ksh_handle_command(uint8_t argc, const char **argv, bool *exit)
 	else if (strcmp(argv[0], "syscall") == 0) {
 		/* system call - requires at least 1 argument (argc >= 2) */
 		if (argc >= 2) {
-			/* todo */
+			/* todo: proper implementation, correctly handling the arguments */
+			void *result = NULL;
+			int syscall = atoi(argv[1]);
+			switch (argc) {
+				case 2: 
+					result = __internal_syscall(syscall);
+					break;
+				case 3: 
+					result = __internal_syscall(syscall, argv[2]);
+					break;
+				default: 
+					break;
+			}
+			ksh_define_variable("!", result);
 		}
 		else {
 			kprint("Insufficient arguments provided.\n");
@@ -249,10 +262,6 @@ static void ksh_parse_command(const char *restrict buffer, bool *exit)
 int kernel_shell_main(void)
 {
 	/* Setup some default variables for the shell */
-	ksh_define_variable("KERNEL_NAME", kernel_name);
-	ksh_define_variable("KERNEL_VERSION", kernel_version);
-	ksh_define_variable("KERNEL_BUILD", kernel_build_date);
-	ksh_define_variable("KERNEL_COMMIT", kernel_commit);
 	ksh_define_variable("PROMPT", "# ");
 
 	/* Prepare the main thread loop */
