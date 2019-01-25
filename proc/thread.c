@@ -145,9 +145,9 @@ void thread_yield(
 	/* Are we ready to yield? The thread is allowed at least a certain amount
 	   of time. */
 	uint64_t time = uptime_ms();
-	if (_current_thread->state & (thread_sleeping | thread_irq) == 0) {
+	if (_current_thread->state == thread_running) {
 		if (_current_thread->suspend_time > time)
-		return;	
+			return;	
 	}
 	
 	/* If the next thread is the current task then abort. Nothing will happen */
