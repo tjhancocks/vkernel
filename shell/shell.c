@@ -51,10 +51,30 @@ static void ksh_run_script(const char *restrict script, bool *exit);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+static struct ksh_var *ksh_find_variable(const char *restrict id)
+{
+	struct ksh_var *ptr = first_shell_variable;
+	while (ptr) {
+		if (strcmp(ptr->id, id) == 0) {
+			return ptr;
+		}
+		ptr = ptr->next;
+	}
+	return NULL;
+}
+
 static void ksh_define_variable(
 	const char *restrict id, const char *restrict value
 ) {
-	struct ksh_var *var = kalloc(sizeof(*var));
+	struct ksh_var *var = ksh_find_variable(id);
+	if (var) {
+		kfree(var->value);
+		var->value = kalloc(strlen(value) + 1);
+		memcpy(var->value, value, strlen(value));
+		return;
+	}
+
+	var = kalloc(sizeof(*var));
 	var->id = kalloc(strlen(id) + 1);
 	var->value = kalloc(strlen(value) + 1);
 
@@ -69,18 +89,6 @@ static void ksh_define_variable(
 		last_shell_variable->next = var;
 	}
 	last_shell_variable = var;
-}
-
-static struct ksh_var *ksh_find_variable(const char *restrict id)
-{
-	struct ksh_var *ptr = first_shell_variable;
-	while (ptr) {
-		if (strcmp(ptr->id, id) == 0) {
-			return ptr;
-		}
-		ptr = ptr->next;
-	}
-	return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -245,12 +253,16 @@ int kernel_shell_main(void)
 	ksh_define_variable("KERNEL_VERSION", kernel_version);
 	ksh_define_variable("KERNEL_BUILD", kernel_build_date);
 	ksh_define_variable("KERNEL_COMMIT", kernel_commit);
+	ksh_define_variable("PROMPT", "# ");
 
 	/* Prepare the main thread loop */
 	bool should_exit = false;
 	while (!should_exit) {
 		char buffer[BUFFER_LEN] = { 0 };
-		kprint("# ");
+
+		/* display the input prompt */
+		struct ksh_var *var = ksh_find_variable("PROMPT");
+		kprint(var ? var->value : "# ");
 
 		/* read input from the user and handle it */
 		if (readline(&buffer, BUFFER_LEN) > 0) {
