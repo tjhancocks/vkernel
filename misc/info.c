@@ -20,46 +20,7 @@
   SOFTWARE.
  */
 
-ENTRY(start)
-SECTIONS
-{
-	. = 0x00100000;
-	kernel_start = .; _kernel_start = .; __kernel_start = .;
-
-	.__mbHeader : {
-		*(.__mbHeader)
-	}
-	.text ALIGN(0x1000) : {
-		*(.text)
-	}
-	.rodata ALIGN(0x1000) : {
-		*(.rodata*)
-	}
-	.data ALIGN(0x1000) : {
-		*(.data)
-	}
-	.bss ALIGN(0x1000) : {
-		sbss = .;
-		*(COMMON)
-		*(.bss)
-		ebss = .;
-	}
-
-	end = .;
-	kernel_end = .; _kernel_end = .; __kernel_end = .;
-
-	/DISCARD/ : {
-		*(.common)
-		*(.eh_frame)
-		*(.note.gnu.build-id)
-		*(.comment)
-		*(.debug_info)
-		*(.debug_abbrev)
-		*(.debug_loc)
-		*(.debug_aranges)
-		*(.debug_ranges)
-		*(.debug_line)
-		*(.debug_str)
-		*(.symtab)
-	}
-}
+const char *kernel_name = __KERNEL_NAME__;
+const char *kernel_version = __KERNEL_VERSION__;
+const char *kernel_build_date = __DATE__;
+const char *kernel_commit = __KERNEL_COMMIT__;

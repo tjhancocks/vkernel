@@ -134,7 +134,7 @@ struct thread *thread_create(int(*start)(void))
 
 ////////////////////////////////////////////////////////////////////////////////
 
-__attribute__((noreturn)) void thread_yield(
+void thread_yield(
 	uintptr_t stack_ptr, uintptr_t stack_base, uint8_t irq
 ) {
 	/* Check that the current thread is happy to yield. */

@@ -55,7 +55,9 @@ TOOL.TAR.flags = c -f $(KERNEL.ramdisk) $(RAMDISK.files)
 TOOL.CC.flags = -ffreestanding -Wall -Wextra -nostdlib -nostdinc -fno-builtin\
 	-fno-stack-protector -nostartfiles -nodefaultlibs -m32\
 	-finline-functions -std=c11 -O0 -fstrength-reduce\
-	-fomit-frame-pointer -c -I./include -DUSE_SERIAL
+	-fomit-frame-pointer -c -I./include -DUSE_SERIAL\
+	-D__KERNEL_NAME__="\"vkernel\"" -D__KERNEL_VERSION__="\"0.1\""\
+	-D__KERNEL_COMMIT__="\"n/a\""
 TOOL.AS.flags = -felf
 TOOL.LD.flags = -nostdlib -nostartfiles -L$(BUILD)
 

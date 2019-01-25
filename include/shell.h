@@ -20,46 +20,14 @@
   SOFTWARE.
  */
 
-ENTRY(start)
-SECTIONS
-{
-	. = 0x00100000;
-	kernel_start = .; _kernel_start = .; __kernel_start = .;
+#if !defined(SHELL_H)
+#define SHELL_H
 
-	.__mbHeader : {
-		*(.__mbHeader)
-	}
-	.text ALIGN(0x1000) : {
-		*(.text)
-	}
-	.rodata ALIGN(0x1000) : {
-		*(.rodata*)
-	}
-	.data ALIGN(0x1000) : {
-		*(.data)
-	}
-	.bss ALIGN(0x1000) : {
-		sbss = .;
-		*(COMMON)
-		*(.bss)
-		ebss = .;
-	}
+#include <types.h>
 
-	end = .;
-	kernel_end = .; _kernel_end = .; __kernel_end = .;
+/**
+ Launch the kernel shell.
+ */
+void launch_kernel_shell(void);
 
-	/DISCARD/ : {
-		*(.common)
-		*(.eh_frame)
-		*(.note.gnu.build-id)
-		*(.comment)
-		*(.debug_info)
-		*(.debug_abbrev)
-		*(.debug_loc)
-		*(.debug_aranges)
-		*(.debug_ranges)
-		*(.debug_line)
-		*(.debug_str)
-		*(.symtab)
-	}
-}
+#endif
