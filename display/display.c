@@ -54,8 +54,11 @@ void init_display(void)
 
 void display_clear(void)
 {
-	if (main_display && main_display->clear)
+	if (main_display && main_display->clear) {
+		main_display->cursor_x = 0;
+		main_display->cursor_y = 0;
 		main_display->clear();
+	}
 }
 
 void display_putc(const char c)

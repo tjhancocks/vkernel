@@ -26,16 +26,62 @@
 #include <string.h>
 #include <alloc.h>
 #include <ramdisk.h>
+#include <display.h>
+#include <info.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BUFFER_LEN	1024
 
+struct ksh_var
+{
+	char *id;
+	char *value;
+	struct ksh_var *next;
+	struct ksh_var *prev;
+};
+
 static struct thread *kernel_shell_thread = NULL;
+static struct ksh_var *first_shell_variable = NULL;
+static struct ksh_var *last_shell_variable = NULL;
 
 static void ksh_parse_command(const char *restrict buffer, bool *exit);
 static void ksh_handle_command(uint8_t argc, const char **argv, bool *exit);
 static void ksh_run_script(const char *restrict script, bool *exit);
+
+////////////////////////////////////////////////////////////////////////////////
+
+static void ksh_define_variable(
+	const char *restrict id, const char *restrict value
+) {
+	struct ksh_var *var = kalloc(sizeof(*var));
+	var->id = kalloc(strlen(id) + 1);
+	var->value = kalloc(strlen(value) + 1);
+
+	memcpy(var->id, id, strlen(id));
+	memcpy(var->value, value, strlen(value));
+
+	var->prev = last_shell_variable;
+	if (!first_shell_variable) {
+		first_shell_variable = var;
+	}
+	if (last_shell_variable) {
+		last_shell_variable->next = var;
+	}
+	last_shell_variable = var;
+}
+
+static struct ksh_var *ksh_find_variable(const char *restrict id)
+{
+	struct ksh_var *ptr = first_shell_variable;
+	while (ptr) {
+		if (strcmp(ptr->id, id) == 0) {
+			return ptr;
+		}
+		ptr = ptr->next;
+	}
+	return NULL;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,14 +126,27 @@ static void ksh_handle_command(uint8_t argc, const char **argv, bool *exit)
 	}
 	else if (strcmp(argv[0], "echo") == 0) {
 		for (uint8_t i = 1; i < argc; ++i) {
-			kprint("%s\n", argv[i]);
+			kprint("%s ", argv[i]);
 		}
+		kprint("\n");
+	}
+	else if (strcmp(argv[0], "set") == 0) {
+		/* set variable - requires at 2 arguments (argc == 3) */
+		if (argc == 3) {
+			ksh_define_variable(argv[1], argv[2]);
+		}
+		else {
+			kprint("Incorrect arguments provided.\n");
+			kprint("  set [name] [value]\n");
+		}
+	}
+	else if (strcmp(argv[0], "clear") == 0) {
+		display_clear();
 	}
 	else {
 		char *script = ramdisk_open(&system_ramdisk, argv[0], NULL);
 		if (script) {
 			ksh_run_script(script, exit);
-			kfree(script);
 		}
 		else {
 			kprint("Unrecognised command '%s'\n", argv[0]);
@@ -131,6 +190,17 @@ static void ksh_parse_command(const char *restrict buffer, bool *exit)
 
 				char *token = memcpy(kalloc(length + 1), ptr + start, length);
 				token[length] = '\0';
+
+				if (token[0] == '$') {
+					struct ksh_var *var = ksh_find_variable(token + 1);
+					kfree(token);
+
+					uint32_t var_len = strlen(var->value);
+					token = kalloc(var_len + 1);
+					memcpy(token, var->value, var_len);
+					token[var_len] = '\0';
+				}
+
 				argv[argc++] = token;
 			}
 
@@ -170,6 +240,13 @@ static void ksh_parse_command(const char *restrict buffer, bool *exit)
 
 int kernel_shell_main(void)
 {
+	/* Setup some default variables for the shell */
+	ksh_define_variable("KERNEL_NAME", kernel_name);
+	ksh_define_variable("KERNEL_VERSION", kernel_version);
+	ksh_define_variable("KERNEL_BUILD", kernel_build_date);
+	ksh_define_variable("KERNEL_COMMIT", kernel_commit);
+
+	/* Prepare the main thread loop */
 	bool should_exit = false;
 	while (!should_exit) {
 		char buffer[BUFFER_LEN] = { 0 };
