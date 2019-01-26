@@ -23,69 +23,118 @@
 #if !defined(PS2_H) && (__i386__ || __x86_64__)
 #define PS2_H
 
-enum ps2_port
+union ps2_configuration
 {
-	ps2_cmd_port = 0x64,
-	ps2_status_port = 0x64,
-	ps2_data_port = 0x60,
+	struct {
+		uint8_t port1_interrupt:1;
+		uint8_t port2_interrupt:1;
+		uint8_t system_flag:1;
+		uint8_t zero1:1;
+		uint8_t port1_clock:1;
+		uint8_t port2_clock:1;
+		uint8_t port_translation:1;
+		uint8_t zero2:1;
+	} __attribute__((packed)) s;
+	uint8_t value;
 };
 
-enum ps2_status
+union ps2_status
 {
-	ps2_status_output = (1 << 0),
-	ps2_status_input = (1 << 1),
-	ps2_status_system = (1 << 2),
-	ps2_status_command = (1 << 3),
-	ps2_status_timeout = (1 << 6),
-	ps2_status_parity_error = (1 << 7),
+	struct {
+		uint8_t output_buffer_status:1;
+		uint8_t input_buffer_status:1;
+		uint8_t system_flag:1;
+		uint8_t command:1;
+		uint8_t unknown:2;
+		uint8_t timeout:1;
+		uint8_t parity:1;
+	} __attribute__((packed)) s;
+	uint8_t value;
 };
 
-enum ps2_cmd
+union ps2_controller_output
 {
-	/* Returns the controller configuration byte as a response. */
-	ps2_cmd_read_cfg = 0x20,
-	ps2_cmd_write_cfg = 0x60,
-
-	/* Test the PS/2 controller. Returns either 0x55 (PASS) or 0xFC (FAIL). */
-	ps2_cmd_test = 0xAA,
-
-	/* Disable/Enable second PS/2 port. */
-	ps2_cmd_enable_p2 = 0xA8,
-	ps2_cmd_disable_p2 = 0xA7,
-
-	/* Test the second PS/2 port. Returns 0x00 if test passed, or 0x01 to 0x04
-	   if the test failed. */
-	ps2_cmd_test_p2 = 0xA9,
-
-	/* Disable/Enable first PS/2 port. */
-	ps2_cmd_enable_p1 = 0xAE,
-	ps2_cmd_disable_p1 = 0xAD,
-
-	/* Test the first PS/2 port. Returns 0x00 if test passed, or 0x01 to 0x04
-	   if the test failed. */
-	ps2_cmd_test_p1 = 0x0AB,
-
-	/* Send next command to Port 2. */
-	ps2_cmd_send_to_p2 = 0xD4,
-
-	/* Reset */
-	ps2_cmd_device_reset = 0xFF,
+	struct {
+		uint8_t system_reset:1; /* warning, do not set to zero! */
+		uint8_t a20:1;
+		uint8_t port2_clock:1;
+		uint8_t port2_data:1;
+		uint8_t port1_output_buffer_full:1;
+		uint8_t port2_output_buffer_full:1;
+		uint8_t port1_clock:1;
+		uint8_t port1_data:1;
+	} __attribute__((packed)) s;
+	uint8_t value;
 };
 
-enum ps2_cmd_response
+enum ps2_io_port
 {
-	/* General responses */
-	ps2_cmd_ack = 0xFA,
-	ps2_cmd_resend = 0xFE,
+	ps2_data_port = 0x60, /* read/write */
+	ps2_status_reg = 0x64, /* read */
+	ps2_command_reg = 0x64, /* write */
+};
 
-	/* Specific responses */
-	ps2_cmd_test_pass = 0x55,
-	ps2_cmd_test_fail = 0xFC,
-	ps2_cmd_port_test_pass = 0x00,
-	ps2_cmd_port_test_clk_lo = 0x01,
-	ps2_cmd_port_test_clk_hi = 0x02,
-	ps2_cmd_port_test_data_lo = 0x03,
-	ps2_cmd_port_test_data_hi = 0x04,
+enum ps2_controller_response
+{
+	ps2_response_ack = 0xFA,
+	ps2_response_resend = 0xFE,
+};
+
+enum ps2_controller_command
+{
+	/* Command Flags */
+	ps2_has_response                   = 0x100,
+	ps2_has_data                       = 0x200,
+
+	/* PS/2 Controller Commands */
+	ps2_read_ram                       = 0x20 | ps2_has_response,
+	ps2_write_ram                      = 0x60 | ps2_has_data,
+	ps2_port2_disable                  = 0xA7,
+	ps2_port2_enable                   = 0xA8,
+	ps2_port2_test                     = 0xA9 | ps2_has_response,
+	ps2_test                           = 0xAA | ps2_has_response,
+	ps2_port1_test                     = 0xAB | ps2_has_response,
+	ps2_port1_disable                  = 0xAD,
+	ps2_port1_enable                   = 0xAE,
+	ps2_read_input_port                = 0xC0,
+	ps2_input_low_to_status            = 0xC1,
+	ps2_input_hi_to_status             = 0xC2,
+	ps2_read_output_port               = 0xD0 | ps2_has_response,
+	ps2_next_to_output_port            = 0xD1,
+	ps2_next_to_port1_output           = 0xD2,
+	ps2_next_to_port2_output           = 0xD3,
+	ps2_next_to_port2_input            = 0xD4,
+	ps2_pulse_output                   = 0xF0,
+};
+
+enum ps2_device_command
+{
+	/* Command Flags */
+	ps2_device_has_ack                 = 0x100, /* ACK */
+	ps2_device_has_first_byte          = 0x200, /* First response byte */
+	ps2_device_has_second_byte         = 0x400, /* Second response byte */
+
+	/* PS/2 Device Universal Commands */
+	ps2_device_enable_scan             = 0xF4 | ps2_device_has_ack,
+	ps2_device_disable_scan            = 0xF5 | ps2_device_has_ack,
+	ps2_device_identify                = 0xF2 | ps2_device_has_ack
+	                                          | ps2_device_has_first_byte
+	                                          | ps2_device_has_second_byte,
+	ps2_device_reset                   = 0xFF | ps2_device_has_ack
+	                                          | ps2_device_has_first_byte
+	                                          | ps2_device_has_second_byte,
+};
+
+enum ps2_device_type
+{
+	ps2_device_unknown = 0xFFFE, /* Unknown Device */
+	ps2_device_at_keyboard = 0xFFFF, /* Invalid response */
+	ps2_device_mouse = 0x0000,
+	ps2_device_mouse_scroll_wheel = 0x0300,
+	ps2_device_mouse_5btn = 0x0400,
+	ps2_device_mf2_keyboard_translation_1 = 0x41AB,
+	ps2_device_mf2_keyboard_translation_2 = 0xC1AB,
+	ps2_device_mf2_keyboard = 0x83AB,
 };
 
 void init_ps2_controller(void);

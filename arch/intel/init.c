@@ -35,8 +35,8 @@ void init_arch(void)
 	/* Setup the common factors across both i386 and x86_64. */
 	init_vga();
 	init_acpi();
-	init_ps2_controller();
 	init_pit();
+	init_ps2_controller();
 	init_cmos();
 }
 
