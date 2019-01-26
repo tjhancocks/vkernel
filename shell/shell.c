@@ -209,7 +209,8 @@ static void ksh_parse_command(const char *restrict buffer, bool *exit)
 					length -= 2;
 				}
 
-				char *token = memcpy(kalloc(length + 1), ptr + start, length);
+				char *token = kalloc(length + 1);
+				token = memcpy(token, ptr + start, length);
 				token[length] = '\0';
 
 				if (token[0] == '$') {

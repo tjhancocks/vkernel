@@ -91,9 +91,32 @@ oserr init_heap(struct heap **heap, uintptr_t base, uintptr_t limit)
 	(*heap)->first->next = NULL;
 	(*heap)->first->back = NULL;
 
-
 	/* Heap setup and constructed successfully. */
 	return e_ok;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+static void __debug_dump_heap_block(struct heap_block *block) 
+{
+	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
+	if (block) {
+		klog("+ block %p (state=%#08x)\n", block, block->state);
+		klog("  - header-size=%d bytes (%#02x)\n", block_header_size, block_header_size);
+		klog("  - size=%d bytes (%#02x)\n", block->size, block->size);
+		klog("  - start=%p\n", block->start);
+		klog("  - next=%p\n", block->next);
+		klog("  - prev=%p\n", block->back);
+	}
+}
+
+static void __debug_dump_heap(struct heap *heap) 
+{
+	struct heap_block *ptr = heap->first;
+	while (ptr) {
+		__debug_dump_heap_block(ptr);
+		ptr = ptr->next;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,6 +220,9 @@ static void *heap_merge_blocks(struct heap_block *b0, struct heap_block *b1)
 		b0->size += heap_align(sizeof(*b1)) + b1->size;
 	}
 
+	/* Update the start pointer */
+	b0->start = block_start(b0);
+
 	/* Return b0 to the caller as the new "merged" block */
 	return b0;
 }
@@ -255,8 +281,9 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 				return (void *)ptr->start;
 			}
 			else if (ptr->size >= size) {
-				/* We can use the block */
+				/* We can use the block, but make sure it is valid. */
 				ptr->state = heap_block_used;
+				ptr->start = block_start(ptr);
 				heap->free_blocks--;
 				heap_map_pages(ptr);
 				return (void *)ptr->start;
@@ -272,16 +299,21 @@ void *heap_alloc(struct heap *heap, uint32_t size)
 
 void heap_dealloc(struct heap *heap, void *ptr)
 {
+	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
+
 	if (ptr == NULL) {
 		klogc(swarn, "Attempted to deallocate NULL.\n");
+		return;
+	}
+	else if (ptr < heap->base + block_header_size) {
+		klogc(swarn, "Attempt to deallocate an invalid pointer %p!\n", ptr);
+		__debug_dump_heap(heap);
 		return;
 	}
 
 
 	/* Determine the actual block structure for the provided pointer. */
-	uint32_t block_header_size = heap_align(sizeof(struct heap_block));
 	struct heap_block *block = (uintptr_t)ptr - block_header_size;
-
 	/* Validate that this is the required block. TODO this, check that
 	   the owner is the specified heap and that it has a valid start. */
 	if (block->owner != heap || block->start != (uintptr_t)ptr) {
