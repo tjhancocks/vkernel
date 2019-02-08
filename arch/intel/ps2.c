@@ -211,13 +211,14 @@ static void ps2_mouse_irq_handler(uint8_t irq __attribute__((unused)))
 
 static void ps2_read_configuration(void)
 {
-	klogc(sinfo, "Reading PS/2 Configuration\n");
+	kprintc(sinfo, "Reading PS/2 Configuration");
 	ps2_controller_send(ps2_read_ram, 0, &ps2.configuration.value);
+	kprintc(sinfo, " (%#02x)\n", ps2.configuration.value);
 }
 
 static void ps2_update_configuration(void)
 {
-	klogc(sinfo, "Writing PS/2 Configuration\n");
+	kprintc(sinfo, "Writing PS/2 Configuration (%#02x)\n", ps2.configuration.value);
 	ps2_controller_send(ps2_write_ram, ps2.configuration.value, NULL);
 }
 
@@ -236,14 +237,14 @@ static bool ps2_test_port(uint8_t port)
 	ps2_controller_send(cmd, 0, &response);
 	switch (response) {
 		case 0x00: /* Passed */
-			klogc(sok, "PS/2 Port %d passed self test\n", port);
+			kprintc(sok, "PS/2 Port %d passed self test\n", port);
 			return true;
 		case 0x01: /* Clock line stuck low */
 		case 0x02: /* Clock line stuck high */
 		case 0x03: /* Data line stuck low */
 		case 0x04: /* Data line stuck high */
 		default:   /* Unknown result */
-			klogc(sok, "PS/2 Port %d failed self test\n", port);
+			kprintc(sok, "PS/2 Port %d failed self test\n", port);
 			return false;
 	}
 }
@@ -258,7 +259,7 @@ static bool ps2_port_enabled(uint8_t port, bool enable)
 		       : (port == 1 ? ps2_port1_disable : ps2_port2_disable)
 	);
 
-	klogc(
+	kprintc(
 		sinfo, "Setting PS/2 Port %d to %sabled\n", port, enable ? "en" : "dis"
 	);
 	ps2_controller_send(cmd, 0, NULL);
@@ -280,7 +281,7 @@ static bool ps2_port_interrupts_enabled(uint8_t port, bool enable)
 		ps2.configuration.s.port2_clock = !enable;
 	}
 
-	klogc(
+	kprintc(
 		sinfo, "%sabling PS/2 Port %d interrupts\n", enable ? "En" : "Dis", port
 	);
 	ps2_update_configuration();
@@ -337,13 +338,13 @@ static bool ps2_port_detect_device(uint8_t port, enum ps2_device_type *type)
 
 	/* Lookup what the response indicates. */
 	if (ps2_device_is_mouse(response)) {
-		klogc(sok, "PS/2 Device on Port %d is a mouse\n", port);
+		kprintc(sok, "PS/2 Device on Port %d is a mouse\n", port);
 	}
 	else if (ps2_device_is_keyboard(response)) {
-		klogc(sok, "PS/2 Device on Port %d is a keyboard\n", port);
+		kprintc(sok, "PS/2 Device on Port %d is a keyboard\n", port);
 	}
 	else {
-		klogc(swarn, "PS/2 Device on Port %d is unknown\n", port);
+		kprintc(swarn, "PS/2 Device on Port %d is unknown\n", port);
 		response = ps2_device_unknown;
 	}
 
@@ -366,9 +367,12 @@ static bool ps2_reset_device(uint8_t port)
 
 	/* Attempt to reset the device. */
 	uint16_t response = 0;
+	ps2_flush();
 	if (!ps2_device_send(ps2_device_reset, port, 0, &response)) {
 		return false;
 	}
+
+	kprint("PS/2 Device Port %d reset response %#04x\n", port, response);
 
 	switch (response) {
 		case 0x00AA: /* Success */
@@ -388,14 +392,18 @@ static bool ps2_configure_port(uint8_t port)
 		return false;
 	}
 
-	/* Ensure its interrupt line is enabled. */
-	ps2_port_interrupts_enabled(port, true);
-
 	/* Send a reset request to the device */
+	/* TODO: This causes the keyboard on a Samsung N130 to become inoperable
+	   for some reason. Disabling this for now until the exact reason for this
+	   is determined.
 	if (!ps2_reset_device(port)) {
-		klogc(swarn, "PS/2 Device on Port %d failed to reset!\n", port);
+		kprintc(swarn, "PS/2 Device on Port %d failed to reset!\n", port);
 		return false;
 	}
+	*/
+
+	/* Ensure its interrupt line is enabled. */
+	ps2_port_interrupts_enabled(port, true);
 
 	/* Ask the device what it is. */
 	enum ps2_device_type device_type = ps2_device_unknown;
@@ -406,17 +414,17 @@ static bool ps2_configure_port(uint8_t port)
 	/* Bind an appropriate IRQ handler to it. */
 	uint8_t irq = (port == 1 ? 0x21 : 0x2C);
 	if (ps2_device_is_keyboard(device_type)) {
-		klog("Installing PS/2 Keyboard Handler for IRQ %02x\n", irq);
+		kprint("Installing PS/2 Keyboard Handler for IRQ %02x\n", irq);
 		set_irq_handler(irq, ps2_keyboard_irq_handler);
 	}
 	else if (ps2_device_is_mouse(device_type)) {
-		klog("Installing PS/2 Mouse Handler for IRQ %02x\n", irq);
+		kprint("Installing PS/2 Mouse Handler for IRQ %02x\n", irq);
 		set_irq_handler(irq, ps2_mouse_irq_handler);
 	}
 
 	ps2_flush();
 
-	klogc(sok, "PS/2 Port %d is enabled.\n", port);
+	kprintc(sok, "PS/2 Port %d is enabled.\n", port);
 	return true;
 }
 
@@ -429,11 +437,11 @@ static bool ps2_self_test(void)
 
 	switch (response) {
 		case 0x55: /* Passed */
-			klogc(sok, "PS/2 controller passed self test\n");
+			kprintc(sok, "PS/2 controller passed self test\n");
 			return true;
 		case 0xFC: /* Failed */
 		default:   /* Unknown result */
-			klogc(sok, "PS/2 controller failed self test\n");
+			kprintc(sok, "PS/2 controller failed self test\n");
 			return false;
 	}
 }
@@ -442,7 +450,7 @@ static bool ps2_self_test(void)
 
 void init_ps2_controller(void)
 {
-	klogc(sinfo, "Initialising PS/2 Controller\n");
+	kprintc(sinfo, "Initialising PS/2 Controller\n");
 
 	/* Ensure both PS/2 ports are disabled. If we're dealing with single channel
 	   controller, then the second disable command will be ignored. */
@@ -462,24 +470,24 @@ void init_ps2_controller(void)
 	ps2.configuration.value &= ~(0x03);
 	ps2_update_configuration();
 
-	klog(
+	kprint(
 		"PS/2 Controller is %s channel.\n", ps2.dual_channel ? "dual" : "single"
 	);
 
 	/* Perform the required tests of both the controller and the ports. */
 	if (!(ps2.enabled = ps2_self_test())) {
-		klogc(serr, "PS/2 Controller failed self test. Disabling PS/2.\n");
+		kprintc(serr, "PS/2 Controller failed self test. Disabling PS/2.\n");
 		return;
 	}
 
 	if (!(ps2.port1_valid = ps2_test_port(1))) {
-		klogc(serr, "PS/2 Port 1 failed self test. Disabling Port 1.\n");
+		kprintc(serr, "PS/2 Port 1 failed self test. Disabling Port 1.\n");
 		return;
 	}
 
 	if (ps2.dual_channel) {
 		if (!(ps2.port2_valid = ps2_test_port(2))) {
-			klogc(serr, "PS/2 Port 2 failed self test. Disabling Port 2.\n");
+			kprintc(serr, "PS/2 Port 2 failed self test. Disabling Port 2.\n");
 			return;
 		}
 	}

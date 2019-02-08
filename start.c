@@ -97,7 +97,7 @@ __attribute__((noreturn)) void kmain(void *mb, uint32_t boot_magic)
 	/* Display the boot_message if it exists. */
 	void *boot_message = ramdisk_open(&system_ramdisk, "bootmessage.txt", NULL);
 	if (boot_message) {
-		kprint(boot_message);
+		// kprint(boot_message);
 	}
 
 	/* Setup I/O devices */
